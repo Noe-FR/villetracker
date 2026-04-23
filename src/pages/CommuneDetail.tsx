@@ -1441,8 +1441,8 @@ export function CommuneDetail() {
   const { data: immoEvo } = useApi(
     () =>
       tab === "immobilier"
-        ? api.getImmobilierEvolution(codeInsee!)
-        : Promise.resolve(null as unknown as Array<{ annee: number; prix_m2: number; nb_mutations: number | null }>),
+        ? api.getDvfEvolution(codeInsee!)
+        : Promise.resolve(null as unknown as import("../types").DvfEvolutionData),
     [codeInsee, tab]
   );
 

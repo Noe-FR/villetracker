@@ -180,7 +180,7 @@ function MapLayers({ selectedCode, onSelectCommune }: Props) {
 
     api.getCommuneGeo(selectedCode).then((geo) => {
       if (geo.geometry) {
-        const bounds = L.geoJSON({ type: "Feature", geometry: geo.geometry as GeoJSON.Geometry, properties: {} }).getBounds();
+        const bounds = L.geoJSON({ type: "Feature", geometry: geo.geometry as GeoJSON.Geometry, properties: {} } as GeoJSON.Feature).getBounds();
         if (bounds.isValid()) map.fitBounds(bounds, { padding: [60, 60] });
       }
       if (geo.departement_code) loadCommunesRef.current(geo.departement_code);
