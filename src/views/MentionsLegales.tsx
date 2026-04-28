@@ -1,8 +1,10 @@
-import { useNavigate } from "react-router-dom";
+'use client';
+import { useRouter } from 'next/navigation';
 import { ArrowLeft, BarChart2 } from "lucide-react";
+import { Footer } from "../components/Footer";
 
 export function MentionsLegales() {
-  const navigate = useNavigate();
+  const router = useRouter();
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -15,7 +17,7 @@ export function MentionsLegales() {
           <h1 className="text-slate-900 font-bold text-base">VilleTracker</h1>
         </div>
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => router.back()}
           className="flex items-center gap-2 text-sm text-slate-600 hover:text-blue-600 transition-colors"
         >
           <ArrowLeft size={15} />
@@ -40,8 +42,8 @@ export function MentionsLegales() {
             <li><span className="font-medium">Qualité :</span> Particulier</li>
             <li>
               <span className="font-medium">Contact :</span>{" "}
-              <a href="mailto:contact@TODO.fr" className="text-blue-600 hover:underline">
-                contact@TODO.fr
+              <a href="mailto:contact@villetracker.fr" className="text-blue-600 hover:underline">
+                contact@villetracker.fr
               </a>
             </li>
           </ul>
@@ -167,6 +169,7 @@ export function MentionsLegales() {
           Dernière mise à jour : avril 2025
         </p>
       </main>
+      <Footer />
     </div>
   );
 }

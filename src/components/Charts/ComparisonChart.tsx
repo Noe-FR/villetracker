@@ -1,3 +1,4 @@
+'use client';
 import {
   BarChart,
   Bar,
@@ -56,8 +57,8 @@ export function ComparisonChart({ data, trancheLabel }: Props) {
         Écart en % par rapport à la moyenne des communes de{" "}
         <span className="text-blue-400 font-semibold">{trancheLabel}</span>
         <br />
-        <span className="text-emerald-400">Vert</span> = dépense moins que la moyenne ·{" "}
-        <span className="text-red-400">Rouge</span> = dépense plus
+        <span className="text-emerald-400">Vert</span> = favorable vs la moyenne ·{" "}
+        <span className="text-red-400">Rouge</span> = défavorable vs la moyenne
       </p>
       <ResponsiveContainer width="100%" height={340}>
         <BarChart

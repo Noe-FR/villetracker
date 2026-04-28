@@ -45,8 +45,8 @@ export interface ComparisonItem {
   agregat: string;
   commune_eph: number;
   moyenne_tranche: number;
-  min_tranche: number;
-  max_tranche: number;
+  p10_tranche: number | null;
+  p90_tranche: number | null;
   diff_pct: number | null;
   nb_communes: number;
   rang: number;
@@ -140,6 +140,9 @@ export interface MarchesData {
   siren: string;
   annee: number;
   total: number;
+  page: number;
+  page_size: number;
+  pages: number;
   scope: "acheteur" | "lieu";
   marches: Marche[];
 }
@@ -215,10 +218,21 @@ export interface NuanceElection {
   nuance: string;
   libelle: string;
   couleur: string;
+  libelle_liste?: string;
   nb_candidats: number;
   nb_voix?: number;
   pct_voix: number | null;
   tete_liste?: string;
+  sieges_cm?: number;
+}
+
+export interface ElectionTourStats {
+  inscrits?: number;
+  votants?: number;
+  abstentions?: number;
+  blancs?: number;
+  nuls?: number;
+  exprimes?: number;
 }
 
 export interface ElectionAnnee {
@@ -232,6 +246,8 @@ export interface ElectionAnnee {
   nuances: NuanceElection[];
   nuances_t1?: NuanceElection[];
   nuances_t2?: NuanceElection[];
+  stats_t1?: ElectionTourStats;
+  stats_t2?: ElectionTourStats;
   nuance_gagnante: NuanceElection | null;
 }
 
@@ -263,6 +279,8 @@ export interface DvfTransaction {
   prix_m2: number;
   vefa: boolean;
   nb_locaux: number | null;
+  lat: number | null;
+  lon: number | null;
 }
 
 export interface DvfYearStats {
@@ -285,41 +303,86 @@ export interface DvfTransactionsData {
   code_insee: string;
   annee: number;
   total: number;
+  page: number;
+  page_size: number;
+  pages: number;
   transactions: DvfTransaction[];
 }
 
 export interface DvfMapFeature {
   type: "Feature";
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  geometry: any; // Point | Polygon | MultiPolygon
+  geometry: { type: "Point"; coordinates: [number, number] };
   properties: {
-    date: string | null;
-    annee: number;
+    nb: number;
+    avg_prix_m2: number;
     type: string;
-    codtypbien: string;
-    surface: number;
-    prix: number;
-    prix_m2: number;
-    vefa: boolean;
-    has_polygon: boolean;
   };
 }
 
 export interface DvfMapData {
   type: "FeatureCollection";
   count: number;
+  total: number;
   features: DvfMapFeature[];
+}
+
+export interface EconomieData {
+  marches: MarchesData | null;
+  fiscalitePro: FiscaliteProData | null;
+}
+
+export interface EauMensuelPoint {
+  annee: number;
+  mois: number;
+  label: string; // "janv. 2024"
+  th_avg: number | null;
+  nitrates_avg: number | null;
+  ph_avg: number | null;
+  conductivite_avg: number | null;
+  turbidite_avg: number | null;
+  calcium_avg: number | null;
+  sulfates_avg: number | null;
+  nb_mesures: number;
+}
+
+export interface EauMensuelData {
+  code_insee: string;
+  points: EauMensuelPoint[];
+}
+
+export interface EauSerie {
+  annee: number;
+  nb_prelevements: number;
+  taux_conformite_bact: number | null;
+  taux_conformite_pc: number | null;
+  th_avg: number | null;
+  nitrates_avg: number | null;
+  ph_avg: number | null;
+  conductivite_avg: number | null;
+  turbidite_avg: number | null;
+  calcium_avg: number | null;
+  sulfates_avg: number | null;
 }
 
 export interface EauData {
   code_insee: string;
   nb_prelevements: number;
   derniere_analyse: string | null;
+  derniere_annee: number | null;
   distributeur: string | null;
   taux_conformite_bact: number | null;
   taux_conformite_pc: number | null;
   nb_non_conformes_bact: number;
   nb_non_conformes_pc: number;
+  th_avg: number | null;
+  nitrates_avg: number | null;
+  ph_avg: number | null;
+  conductivite_avg: number | null;
+  turbidite_avg: number | null;
+  calcium_avg: number | null;
+  sulfates_avg: number | null;
+  physico_annee: Record<string, number | null>;
+  series: EauSerie[];
 }
 
 export interface FiscaliteProData {
