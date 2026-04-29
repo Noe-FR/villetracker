@@ -8,6 +8,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ dept: s
     return NextResponse.json(data);
   } catch (e) {
     const status = e instanceof ApiError ? e.status : 502;
-    return NextResponse.json({ error: String(e) }, { status });
+    return NextResponse.json({ error: "Service temporairement indisponible" }, { status });
   }
 }

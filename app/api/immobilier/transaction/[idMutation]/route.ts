@@ -10,6 +10,6 @@ export async function GET(
     const data = await serverApi.getDvfTransactionDetail(idMutation);
     return NextResponse.json(data);
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 502 });
+    return NextResponse.json({ error: "Service temporairement indisponible" }, { status: 502 });
   }
 }
