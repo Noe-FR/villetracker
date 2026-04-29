@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
-import { useParams, Link } from "react-router-dom";
+'use client';
+import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef } from "react";
+import Link from 'next/link';
 import {
   ArrowLeft,
   Users,
@@ -33,21 +34,24 @@ import type {
   ElusData,
   HistoriqueElections,
   ImmobilierData,
-  EauData,
+  EauData, EauMensuelData,
+  EconomieData,
 } from "../types";
 import { useApi } from "../hooks/useApi";
 import { api } from "../api/client";
 import { StatCard } from "../components/Panel/StatCard";
 import { higherIsBetter as hib } from "../utils/indicators";
 import { EvolutionChart } from "../components/Charts/EvolutionChart";
-import { AreaChart, Area, LineChart, Line, Legend, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { AreaChart, Area, LineChart, Line, Legend, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import { ComparisonChart } from "../components/Charts/ComparisonChart";
+import { Footer } from "../components/Footer";
 import { AgregatsChart } from "../components/Charts/AgregatsChart";
 import { formatEuro, formatNumber, trancheLabel } from "../utils/format";
 import {
   type FinancialNote,
   type FinancialScore,
-  computeFinancialScore,
+  type ScoreApiResponse,
+  scoreFromApi,
   NOTE_META,
   DIM_ACCENT,
 } from "../utils/financialScore";
@@ -115,13 +119,17 @@ function CommuneMiniMap({ codeInsee }: { codeInsee: string }) {
   // Add GeoJSON when data arrives
   useEffect(() => {
     if (!mapRef.current || !geoData) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geometry = (geoData as any).geometry;
+    if (!geometry) return;
     try {
       if (layerRef.current) {
         layerRef.current.remove();
         layerRef.current = null;
       }
+      const feature = { type: "Feature", geometry, properties: {} };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const layer = L.geoJSON(geoData as any, {
+      const layer = L.geoJSON(feature as any, {
         style: {
           fillColor: "#3b82f6",
           fillOpacity: 0.45,
@@ -148,11 +156,68 @@ function CommuneMiniMap({ codeInsee }: { codeInsee: string }) {
   );
 }
 
-// ── Carte des ventes DVF (Leaflet canvas) ────────────────────────────────────
+// ── Carte des ventes DVF — points individuels ────────────────────────────────
 
-function DvfSalesMap({ mapData }: { mapData: import("../types").DvfMapData }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
+function pointColor(prix_m2: number | null): { fill: string; border: string } {
+  if (!prix_m2)       return { fill: "#94a3b8", border: "#64748b" };
+  if (prix_m2 < 1500) return { fill: "#22c55e", border: "#16a34a" };
+  if (prix_m2 < 2500) return { fill: "#84cc16", border: "#65a30d" };
+  if (prix_m2 < 3500) return { fill: "#eab308", border: "#ca8a04" };
+  if (prix_m2 < 5000) return { fill: "#f97316", border: "#ea580c" };
+  if (prix_m2 < 7000) return { fill: "#ef4444", border: "#dc2626" };
+  return { fill: "#a855f7", border: "#9333ea" };
+}
+
+export interface DvfSalesMapHandle {
+  isolateId: (id: string, popup: string) => void;
+  togglePoints: () => boolean;
+}
+
+const DvfSalesMap = forwardRef<DvfSalesMapHandle, { pointsData: { mode: string; total: number; features: any[] } }>(
+  function DvfSalesMap({ pointsData }, ref) {
+  const containerRef    = useRef<HTMLDivElement>(null);
+  const mapRef          = useRef<L.Map | null>(null);
+  const markersRef      = useRef<Map<string, L.CircleMarker>>(new Map());
+  const layerGroupRef   = useRef<L.LayerGroup | null>(null);
+  const highlightRef    = useRef<L.CircleMarker | null>(null);
+  const fmtRef = useRef(new Intl.NumberFormat("fr-FR"));
+  const fmt = fmtRef.current;
+
+  const clearHighlight = () => {
+    highlightRef.current?.remove();
+    highlightRef.current = null;
+  };
+
+  useImperativeHandle(ref, () => ({
+    isolateId(id: string, popup: string) {
+      const marker = markersRef.current.get(id);
+      if (!marker || !mapRef.current) return;
+      // Hide all points
+      layerGroupRef.current?.remove();
+      // Remove previous highlight
+      clearHighlight();
+      // Add a single bright highlight marker
+      const latlng = marker.getLatLng();
+      const hl = L.circleMarker(latlng, {
+        radius: 9,
+        fillColor: "#facc15",
+        color: "#fff",
+        weight: 2.5,
+        fillOpacity: 1,
+      }).bindPopup(popup).addTo(mapRef.current);
+      hl.openPopup();
+      highlightRef.current = hl;
+      mapRef.current.flyTo(latlng, 17, { animate: true, duration: 0.6 });
+    },
+    togglePoints() {
+      const map = mapRef.current;
+      const lg  = layerGroupRef.current;
+      if (!map || !lg) return true;
+      clearHighlight();
+      if (map.hasLayer(lg)) { lg.remove(); return false; }
+      else { lg.addTo(map); return true; }
+    },
+  }));
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -161,7 +226,6 @@ function DvfSalesMap({ mapData }: { mapData: import("../types").DvfMapData }) {
       scrollWheelZoom: false,
       attributionControl: true,
     });
-    // Fond de carte clair CartoDB Positron (montre les bâtiments)
     L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
       attribution: '© <a href="https://www.openstreetmap.org/">OSM</a> © <a href="https://carto.com/">CARTO</a>',
       maxZoom: 19,
@@ -172,63 +236,122 @@ function DvfSalesMap({ mapData }: { mapData: import("../types").DvfMapData }) {
   }, []);
 
   useEffect(() => {
-    if (!mapRef.current || !mapData?.features?.length) return;
+    if (!mapRef.current || !pointsData?.features?.length) return;
     const map = mapRef.current;
-    const layers: L.Layer[] = [];
+    const lg = L.layerGroup().addTo(map);
+    layerGroupRef.current = lg;
+    const layers: L.CircleMarker[] = [];
     const bounds: [number, number][] = [];
+    const isLight = pointsData.mode === "light";
+    markersRef.current.clear();
 
-    for (const feat of mapData.features) {
+    for (const feat of pointsData.features) {
       const p = feat.properties;
-      const isMaison = p.codtypbien?.startsWith("11");
-      const fillColor = isMaison ? "#f59e0b" : "#3b82f6";
-      const borderColor = isMaison ? "#d97706" : "#1d4ed8";
-      const popupHtml = `
-        <div style="font-size:12px;line-height:1.7;min-width:160px">
-          <strong style="font-size:13px">${isMaison ? "🏠 Maison" : "🏢 Appartement"}</strong>${p.vefa ? ' <em style="color:#7c3aed">VEFA</em>' : ""}<br/>
-          <span style="color:#555">${p.surface} m²</span> — <strong>${new Intl.NumberFormat("fr-FR").format(p.prix)} €</strong><br/>
-          <span style="color:#888">${new Intl.NumberFormat("fr-FR").format(p.prix_m2)} €/m² · ${p.date ? p.date.slice(0, 7) : p.annee}</span>
-        </div>`;
+      const [lon, lat] = feat.geometry.coordinates;
+      bounds.push([lat, lon]);
 
-      let layer: L.Layer;
-      if (feat.geometry.type === "Point") {
-        const [lon, lat] = feat.geometry.coordinates as [number, number];
-        bounds.push([lat, lon]);
-        layer = L.circleMarker([lat, lon], {
-          radius: 5,
-          fillColor,
-          color: borderColor,
-          weight: 1,
-          fillOpacity: 0.75,
-        }).bindPopup(popupHtml);
+      const { fill, border } = pointColor(p.prix_m2);
+      const isMaison = p.type?.toLowerCase().includes("maison");
+      const emoji = isMaison ? "🏠" : "🏢";
+
+      let popupHtml: string;
+      if (!isLight) {
+        const prixStr    = p.prix    ? `${fmt.format(p.prix)} €`        : "–";
+        const prixM2Str  = p.prix_m2 ? `${fmt.format(p.prix_m2)} €/m²` : "–";
+        const surfaceStr = p.surface ? `${fmt.format(p.surface)} m²`    : "–";
+        const dateStr    = p.date ?? p.annee ?? "–";
+        popupHtml = `
+          <div style="font-size:12px;line-height:1.8;min-width:160px">
+            <strong style="font-size:13px">${emoji} ${p.type || "Vente"}</strong><br/>
+            <span style="color:#888">${dateStr}</span><br/>
+            <strong>${prixM2Str}</strong><br/>
+            <span style="color:#555">${prixStr}</span> · <span style="color:#555">${surfaceStr}</span>
+          </div>`;
       } else {
-        // Polygon ou MultiPolygon cadastral
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        layer = L.geoJSON(feat as any, {
-          style: {
-            fillColor,
-            color: borderColor,
-            weight: 1.5,
-            fillOpacity: 0.55,
-          },
-        }).bindPopup(popupHtml);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (layer as any).eachLayer((sub: L.Path) => {
-          const b = (sub as L.Polygon).getBounds();
-          if (b.isValid()) bounds.push([b.getCenter().lat, b.getCenter().lng]);
+        const prixM2Str = p.prix_m2 ? `${fmt.format(p.prix_m2)} €/m²` : "–";
+        popupHtml = `
+          <div style="font-size:12px;line-height:1.8;min-width:160px">
+            <strong style="font-size:13px">${emoji} ${p.type || "Vente"}</strong><br/>
+            <span style="color:#888">${p.annee ?? "–"}</span><br/>
+            <strong>${prixM2Str}</strong><br/>
+            <span style="color:#888;font-style:italic">Cliquez pour voir les détails…</span>
+          </div>`;
+      }
+
+      const layer = L.circleMarker([lat, lon], {
+        radius: 5,
+        fillColor: fill,
+        color: border,
+        weight: 1,
+        fillOpacity: 0.75,
+      }).bindPopup(popupHtml);
+
+      if (isLight) {
+        layer.on("popupopen", async (e: any) => {
+          if (!p.id) return;
+          try {
+            const detail = await api.getDvfTransactionDetail(p.id);
+            const prixStr    = detail.prix    ? `${fmt.format(detail.prix)} €`        : "–";
+            const prixM2Str  = detail.prix_m2 ? `${fmt.format(detail.prix_m2)} €/m²` : "–";
+            const surfaceStr = detail.surface ? `${fmt.format(detail.surface)} m²`    : "–";
+            const dateStr    = detail.date ?? detail.annee ?? "–";
+            const vefaStr    = detail.vefa ? " · VEFA" : "";
+            e.popup.setContent(`
+              <div style="font-size:12px;line-height:1.8;min-width:160px">
+                <strong style="font-size:13px">${emoji} ${detail.type || "Vente"}${vefaStr}</strong><br/>
+                <span style="color:#888">${dateStr}</span><br/>
+                <strong>${prixM2Str}</strong><br/>
+                <span style="color:#555">${prixStr}</span> · <span style="color:#555">${surfaceStr}</span>
+              </div>`);
+          } catch { /* keep current content */ }
         });
       }
-      layer.addTo(map);
+
+      layer.addTo(lg);
       layers.push(layer);
+      if (p.id) markersRef.current.set(p.id, layer);
     }
 
     if (bounds.length) {
       try { map.fitBounds(L.latLngBounds(bounds), { padding: [24, 24], maxZoom: 17 }); } catch { /* noop */ }
     }
-    return () => { layers.forEach(l => l.remove()); };
-  }, [mapData]);
+    return () => { lg.remove(); layerGroupRef.current = null; markersRef.current.clear(); };
+  // fmt est stable (useRef) — pas besoin dans les deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pointsData]);
 
-  return <div ref={containerRef} style={{ width: "100%", height: "400px", borderRadius: "0.75rem", overflow: "hidden" }} />;
-}
+  const legendItems = [
+    { label: "< 1 500 €/m²", color: "#22c55e" },
+    { label: "1 500–2 500",  color: "#84cc16" },
+    { label: "2 500–3 500",  color: "#eab308" },
+    { label: "3 500–5 000",  color: "#f97316" },
+    { label: "5 000–7 000",  color: "#ef4444" },
+    { label: "> 7 000 €/m²", color: "#a855f7" },
+  ];
+
+  return (
+    <div className="relative">
+      <div ref={containerRef} style={{ width: "100%", height: "400px", borderRadius: "0.75rem", overflow: "hidden" }} />
+      <div className="absolute bottom-3 left-3 bg-white/90 backdrop-blur-sm rounded-lg p-2 shadow text-[10px] space-y-0.5 z-[1000]">
+        <p className="font-semibold text-slate-700 mb-1">Prix (€/m²)</p>
+        {legendItems.map(({ label, color }) => (
+          <div key={label} className="flex items-center gap-1.5">
+            <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
+            <span className="text-slate-600">{label}</span>
+          </div>
+        ))}
+        {pointsData.mode === "light" && (
+          <p className="text-slate-400 mt-1 italic">Cliquer pour les détails</p>
+        )}
+      </div>
+      {pointsData.total > 0 && (
+        <p className="text-[10px] text-slate-500 mt-1 text-right">
+          {fmt.format(pointsData.total)} ventes géolocalisées
+        </p>
+      )}
+    </div>
+  );
+});
 
 // ── Grand livre accordéon ─────────────────────────────────────────────────────
 
@@ -399,9 +522,8 @@ function MarchesTable({
             const rowId = m.id ?? String(idx);
             const isOpen = expanded === rowId;
             return (
-              <>
+              <React.Fragment key={rowId}>
                 <tr
-                  key={rowId}
                   onClick={() => toggle(rowId)}
                   className={`border-b border-slate-800/40 cursor-pointer transition-colors ${
                     isOpen
@@ -548,7 +670,7 @@ function MarchesTable({
                     </td>
                   </tr>
                 )}
-              </>
+              </React.Fragment>
             );
           })}
         </tbody>
@@ -932,6 +1054,32 @@ function AlternanceTimeline({
 
 // ── Chart 2 : Résultats par liste avec sélecteur T1/T2 ───────────────────────
 
+function TourStats({ stats }: { stats: import("../types").ElectionTourStats }) {
+  if (!stats?.inscrits) return null;
+  const pct = (n: number | undefined, d: number | undefined) =>
+    n != null && d ? `${((n / d) * 100).toFixed(1)}%` : null;
+  return (
+    <div className="mt-4 grid grid-cols-3 gap-2">
+      {[
+        { label: "Inscrits",     val: stats.inscrits,    sub: null },
+        { label: "Votants",      val: stats.votants,     sub: pct(stats.votants,     stats.inscrits) },
+        { label: "Abstentions",  val: stats.abstentions, sub: pct(stats.abstentions, stats.inscrits) },
+        { label: "Exprimés",     val: stats.exprimes,    sub: pct(stats.exprimes,    stats.votants)  },
+        { label: "Blancs",       val: stats.blancs,      sub: pct(stats.blancs,      stats.votants)  },
+        { label: "Nuls",         val: stats.nuls,        sub: pct(stats.nuls,        stats.votants)  },
+      ].map(({ label, val, sub }) => (
+        <div key={label} className="bg-slate-800/60 rounded-lg px-3 py-2 text-center">
+          <p className="text-[10px] text-slate-500 mb-0.5">{label}</p>
+          <p className="text-xs font-semibold text-slate-200">
+            {val != null ? val.toLocaleString("fr-FR") : "—"}
+          </p>
+          {sub && <p className="text-[10px] text-slate-500">{sub}</p>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function ResultatsBarChart({
   election,
 }: {
@@ -944,9 +1092,11 @@ function ResultatsBarChart({
   const nuances: NuanceElection[] = tour === "t2"
     ? (election.nuances_t2 ?? [])
     : (election.nuances_t1 ?? []);
+  const stats = tour === "t2" ? election.stats_t2 : election.stats_t1;
 
   const maxVoix = Math.max(...nuances.map((n) => n.nb_voix ?? 0), 1);
-  const totalVoix = nuances.reduce((s, n) => s + (n.nb_voix ?? 0), 0);
+  const totalVoix = stats?.exprimes ?? nuances.reduce((s, n) => s + (n.nb_voix ?? 0), 0);
+  const hasSieges = nuances.some((n) => (n.sieges_cm ?? 0) > 0);
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
@@ -994,20 +1144,22 @@ function ResultatsBarChart({
           const pct = maxVoix > 0 ? ((n.nb_voix ?? 0) / maxVoix) * 100 : 0;
           return (
             <div key={n.nuance}>
-              <div className="flex items-baseline justify-between text-xs mb-1.5">
-                <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-baseline justify-between text-xs mb-1">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
                   <div
                     className="w-2.5 h-2.5 rounded-sm shrink-0"
                     style={{ backgroundColor: n.couleur }}
                   />
-                  <span className="text-slate-200 font-medium truncate">
-                    {n.libelle}
-                  </span>
-                  {n.tete_liste && (
-                    <span className="text-slate-500 text-[10px] hidden sm:inline truncate">
-                      — {n.tete_liste}
+                  <div className="min-w-0">
+                    <span className="text-slate-200 font-medium">
+                      {n.libelle_liste || n.libelle}
                     </span>
-                  )}
+                    {n.tete_liste && (
+                      <span className="block text-[10px] text-slate-400 truncate">
+                        {n.tete_liste}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="shrink-0 ml-4 text-right">
                   {n.nb_voix != null && n.nb_voix > 0 ? (
@@ -1020,9 +1172,14 @@ function ResultatsBarChart({
                   ) : (
                     <span className="text-slate-600">— voix</span>
                   )}
+                  {hasSieges && (
+                    <p className="text-[10px] text-slate-500">
+                      {(n.sieges_cm ?? 0) > 0 ? `${n.sieges_cm} siège${(n.sieges_cm ?? 0) > 1 ? "s" : ""}` : "—"}
+                    </p>
+                  )}
                 </div>
               </div>
-              <div className="h-7 bg-slate-800 rounded-lg overflow-hidden">
+              <div className="h-6 bg-slate-800 rounded-lg overflow-hidden">
                 <div
                   className="h-full rounded-lg flex items-center pl-2 transition-all duration-500"
                   style={{
@@ -1038,16 +1195,15 @@ function ResultatsBarChart({
                   )}
                 </div>
               </div>
-              {n.tete_liste && (
-                <p className="text-[10px] text-slate-600 mt-0.5 sm:hidden">{n.tete_liste}</p>
-              )}
             </div>
           );
         })}
       </div>
 
+      {stats && <TourStats stats={stats} />}
+
       <p className="text-[10px] text-slate-600 mt-4">
-        Votes blancs et nuls non disponibles dans cette source (données agrégées par liste).
+        Source : Ministère de l'Intérieur — data.gouv.fr · L'appartenance politique est déclarée par la liste lors du dépôt de candidature.
       </p>
     </div>
   );
@@ -1105,10 +1261,10 @@ function EluCard({
 
 function ElusSection({ data }: { data: ElusData }) {
   const adjoints = data.conseillers.filter((e) =>
-    e.fonction.toLowerCase().includes("adjoint")
+    (e.fonction ?? "").toLowerCase().includes("adjoint")
   );
   const conseillers = data.conseillers.filter(
-    (e) => !e.fonction.toLowerCase().includes("adjoint") && !e.fonction.toLowerCase().includes("maire")
+    (e) => !(e.fonction ?? "").toLowerCase().includes("adjoint") && !(e.fonction ?? "").toLowerCase().includes("maire")
   );
 
   return (
@@ -1168,6 +1324,11 @@ function ElusSection({ data }: { data: ElusData }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 const CHART_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444"];
+
+const NOTE_COLOR: Record<string, string> = {
+  AAA: "#34d399", AA: "#34d399", A: "#2dd4bf",
+  BBB: "#60a5fa", BB: "#fbbf24", B: "#fb923c", CCC: "#f87171",
+};
 
 const KEY_STATS = [
   {
@@ -1252,7 +1413,7 @@ const TABS: { id: Tab; label: string; icon: React.ElementType; metroOnly?: boole
 // Collectivités d'outre-mer sans données OFGL (≠ DOM 971-974, 976 qui ont leurs finances)
 const isLimitedTerritory = (code: string) => /^(975|977|978|986|987|988)/.test(code);
 
-function FinancialScoreCard({ fs, onInfoClick }: { fs: FinancialScore; onInfoClick?: () => void }) {
+function FinancialScoreCard({ fs, onInfoClick, staleYear }: { fs: FinancialScore; onInfoClick?: () => void; staleYear?: number }) {
   const c = NOTE_META[fs.note];
 
   return (
@@ -1264,6 +1425,7 @@ function FinancialScoreCard({ fs, onInfoClick }: { fs: FinancialScore; onInfoCli
           <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
             Santé financière
           </span>
+          {staleYear != null && <span className="text-xs font-medium text-red-400">données {staleYear}</span>}
         </div>
         {onInfoClick && (
           <button
@@ -1311,18 +1473,18 @@ function FinancialScoreCard({ fs, onInfoClick }: { fs: FinancialScore; onInfoCli
   );
 }
 
-export function CommuneDetail() {
-  const { codeInsee } = useParams<{ codeInsee: string }>();
+interface CommuneDetailClientProps {
+  codeInsee: string;
+  initialGeo?: unknown;
+  initialFinances?: unknown;
+}
+
+export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
   const [year, setYear] = useState(2024);
-  const { data: availableYearsData } = useApi(() => api.getAvailableYears(), []);
-  const finMax = availableYearsData?.latest ?? 2024;
-  // Mettre à jour l'année par défaut dès que les années dispo sont chargées
-  useEffect(() => {
-    if (availableYearsData?.latest) setYear(availableYearsData.latest);
-  }, [availableYearsData?.latest]);
 
   // Années effectives par dataset — clamp sur le max disponible de chaque source
-  const effFin     = Math.min(year, finMax);
+  const [finLatest, setFinLatest] = useState(2024);
+  const effFin     = Math.min(year, finLatest);
   const effComp    = Math.min(year, MAX_COMPTABLE);
   const effMarches = Math.min(year, MAX_MARCHES);
   const effEnergie = Math.min(year, MAX_ENERGIE);
@@ -1341,20 +1503,34 @@ export function CommuneDetail() {
   const scoreDetailRef = useRef<HTMLDivElement>(null);
   const scrollToScoreDetail = () => scoreDetailRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
 
+  // Un seul appel BFF pour finances + comparison + score + années disponibles
   const {
-    data: finances,
+    data: finTab,
     loading: loadingFin,
     error: errorFin,
-  } = useApi(() => api.getCommuneFinances(codeInsee!, effFin), [codeInsee, effFin]);
-
-  const {
-    data: comparison,
-    loading: loadingCmp,
-    error: errorCmp,
   } = useApi(
-    () => api.getCommuneComparison(codeInsee!, effFin),
-    [codeInsee, effFin]
+    () => api.getFinancesTab(codeInsee!, effFin),
+    [codeInsee, effFin],
+    `finances:${codeInsee}:${effFin}`
   );
+
+  const finances      = finTab?.finances   ?? null;
+  const comparison    = finTab?.comparison ?? null;
+  const scoreRaw      = finTab?.score      ?? null;
+  const loadingCmp    = loadingFin;
+  const errorCmp      = errorFin;
+
+  // Mettre à jour l'année par défaut et le max connu dès que les années dispo sont chargées
+  useEffect(() => {
+    if (finTab?.years?.latest) {
+      setFinLatest(finTab.years.latest);
+      setYear(finTab.years.latest);
+    }
+  }, [finTab?.years?.latest]);
+
+  const financialScore: FinancialScore | null = scoreRaw
+    ? scoreFromApi(scoreRaw as ScoreApiResponse)
+    : null;
 
   const {
     data: comptes,
@@ -1362,32 +1538,43 @@ export function CommuneDetail() {
     error: errorComptes,
   } = useApi(
     () => api.getComptes(codeInsee!, effComp),
-    [codeInsee, effComp]
+    [codeInsee, effComp],
+    `comptes:${codeInsee}:${effComp}`
   );
 
   const { data: fiscalite } = useApi(
     () => api.getFiscalite(codeInsee!, effComp),
-    [codeInsee, effComp]
+    [codeInsee, effComp],
+    `fiscalite:${codeInsee}:${effComp}`
   );
 
+  const [marchesPage, setMarchesPage] = useState(1);
+  const [marchesLimit, setMarchesLimit] = useState(50);
+  const [eauParam, setEauParam] = useState<"th_avg"|"nitrates_avg"|"ph_avg"|"conductivite_avg"|"turbidite_avg"|"calcium_avg"|"sulfates_avg">("th_avg");
+  useEffect(() => { setMarchesPage(1); }, [codeInsee, effMarches]);
+
   const {
-    data: marches,
+    data: economieData,
     loading: loadingMarches,
     error: errorMarches,
   } = useApi(
     () =>
       tab === "economie"
-        ? api.getMarches(codeInsee!, effMarches)
-        : Promise.resolve(null as unknown as import("../types").MarchesData),
-    [codeInsee, effMarches, tab]
+        ? api.getEconomie(codeInsee!, effMarches, effFiscPro, marchesPage, marchesLimit)
+        : Promise.resolve(null as unknown as EconomieData),
+    [codeInsee, effMarches, effFiscPro, tab, marchesPage, marchesLimit],
+    `economie:${codeInsee}:${effMarches}:${effFiscPro}:${marchesPage}:${marchesLimit}`
   );
+  const marches = economieData?.marches ?? null;
+  const fiscalitePro = economieData?.fiscalitePro ?? null;
 
   const { data: energie, loading: loadingEnergie } = useApi(
     () =>
       tab === "energie"
         ? api.getEnergie(codeInsee!, effEnergie)
         : Promise.resolve(null as unknown as EnergieData),
-    [codeInsee, effEnergie, tab]
+    [codeInsee, effEnergie, tab],
+    `energie:${codeInsee}`
   );
 
   const { data: territoire, loading: loadingTerritoire } = useApi(
@@ -1395,7 +1582,8 @@ export function CommuneDetail() {
       tab === "energie"
         ? api.getTerritoire(codeInsee!)
         : Promise.resolve(null as unknown as TerritoireData),
-    [codeInsee, tab]
+    [codeInsee, tab],
+    `territoire:${codeInsee}`
   );
 
   const { data: eau, loading: loadingEau } = useApi(
@@ -1403,15 +1591,17 @@ export function CommuneDetail() {
       tab === "energie"
         ? api.getEau(codeInsee!)
         : Promise.resolve(null as unknown as EauData),
-    [codeInsee, tab]
+    [codeInsee, tab],
+    `eau:${codeInsee}`
   );
 
-  const { data: fiscalitePro } = useApi(
+  const { data: eauMensuel } = useApi(
     () =>
-      tab === "economie"
-        ? api.getFiscalitePro(codeInsee!, effFiscPro)
-        : Promise.resolve(null as unknown as FiscaliteProData),
-    [codeInsee, effFiscPro, tab]
+      tab === "energie"
+        ? api.getEauMensuel(codeInsee!)
+        : Promise.resolve(null as any),
+    [codeInsee, tab],
+    `eauMensuel:${codeInsee}`
   );
 
   const { data: elus, loading: loadingElus } = useApi(
@@ -1419,7 +1609,8 @@ export function CommuneDetail() {
       tab === "conseil"
         ? api.getElus(codeInsee!)
         : Promise.resolve(null as unknown as ElusData),
-    [codeInsee, tab]
+    [codeInsee, tab],
+    `elus:${codeInsee}`
   );
 
   const { data: historiqueElections, loading: loadingHist } = useApi(
@@ -1427,7 +1618,8 @@ export function CommuneDetail() {
       tab === "conseil"
         ? api.getHistoriqueElections(codeInsee!)
         : Promise.resolve(null as unknown as HistoriqueElections),
-    [codeInsee, tab]
+    [codeInsee, tab],
+    `historique:${codeInsee}`
   );
 
   const { data: immo, loading: loadingImmo, error: errorImmo } = useApi(
@@ -1435,15 +1627,8 @@ export function CommuneDetail() {
       tab === "immobilier"
         ? api.getImmobilier(codeInsee!, effImmo)
         : Promise.resolve(null as unknown as ImmobilierData),
-    [codeInsee, tab, effImmo]
-  );
-
-  const { data: immoEvo } = useApi(
-    () =>
-      tab === "immobilier"
-        ? api.getDvfEvolution(codeInsee!)
-        : Promise.resolve(null as unknown as import("../types").DvfEvolutionData),
-    [codeInsee, tab]
+    [codeInsee, tab, effImmo],
+    `immo:${codeInsee}:${effImmo}`
   );
 
   const { data: dvfEvo, loading: loadingDvfEvo } = useApi(
@@ -1451,25 +1636,35 @@ export function CommuneDetail() {
       tab === "immobilier"
         ? api.getDvfEvolution(codeInsee!)
         : Promise.resolve(null as unknown as import("../types").DvfEvolutionData),
-    [codeInsee, tab]
+    [codeInsee, tab],
+    `dvfEvo:${codeInsee}`
   );
 
   const effTx = Math.min(Math.max(year, 2020), 2025);
+  const [dvfTxPage, setDvfTxPage]       = useState(1);
+  const [dvfTxPageSize, setDvfTxPageSize] = useState(25);
+  const [dvfTxSortBy, setDvfTxSortBy]   = useState<"date"|"surface"|"prix"|"prix_m2">("date");
+  const [dvfTxSortDir, setDvfTxSortDir] = useState<"asc"|"desc">("desc");
+  useEffect(() => { setDvfTxPage(1); }, [codeInsee, effTx]);
   const { data: dvfTx, loading: loadingDvfTx } = useApi(
     () =>
       tab === "immobilier"
-        ? api.getDvfTransactions(codeInsee!, effTx)
+        ? api.getDvfTransactions(codeInsee!, effTx, dvfTxPage, dvfTxPageSize, dvfTxSortBy, dvfTxSortDir)
         : Promise.resolve(null as unknown as import("../types").DvfTransactionsData),
-    [codeInsee, tab, effTx]
+    [codeInsee, tab, effTx, dvfTxPage, dvfTxPageSize, dvfTxSortBy, dvfTxSortDir],
+    `dvfTx:${codeInsee}:${effTx}:${dvfTxPage}:${dvfTxPageSize}:${dvfTxSortBy}:${dvfTxSortDir}`
   );
 
-  const { data: dvfMap, loading: loadingDvfMap } = useApi(
+  const { data: dvfPoints, loading: loadingDvfPoints } = useApi(
     () =>
       tab === "immobilier"
-        ? api.getDvfMap(codeInsee!)
-        : Promise.resolve(null as unknown as import("../types").DvfMapData),
-    [codeInsee, tab]
+        ? api.getDvfPoints(codeInsee!)
+        : Promise.resolve(null as unknown as any),
+    [codeInsee, tab],
+    `dvfPoints:${codeInsee}`
   );
+  const dvfMapRef = useRef<DvfSalesMapHandle>(null);
+  const [dvfPointsVisible, setDvfPointsVisible] = useState(true);
 
   // Auto-select most recent election when historique loads
   useEffect(() => {
@@ -1516,7 +1711,7 @@ export function CommuneDetail() {
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-3 min-w-0">
               <Link
-                to="/"
+                href="/"
                 className="flex items-center gap-1.5 text-slate-400 hover:text-white transition-colors text-sm shrink-0"
               >
                 <ArrowLeft size={15} />
@@ -1656,8 +1851,9 @@ export function CommuneDetail() {
                       key={key}
                       className="bg-slate-800 border border-slate-700 rounded-2xl p-5"
                     >
-                      <p className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-2">
+                      <p className="text-xs font-medium text-slate-400 uppercase tracking-wide mb-2 flex items-center gap-1">
                         {label}
+                        <StaleDataBadge selected={year} effective={effFin} />
                       </p>
                       <p className="text-2xl font-black text-white">
                         {formatEuro(val.euros_par_habitant)}
@@ -1678,10 +1874,7 @@ export function CommuneDetail() {
                 })}
 
                 {/* Score santé financière */}
-                {(() => {
-                  const fs = computeFinancialScore(finances.agregats, finances.evolution_yoy ?? {});
-                  return fs ? <FinancialScoreCard fs={fs} onInfoClick={scrollToScoreDetail} /> : null;
-                })()}
+                {financialScore ? <FinancialScoreCard fs={financialScore} onInfoClick={scrollToScoreDetail} staleYear={year !== effFin ? effFin : undefined} /> : null}
               </div>
             </div>
 
@@ -1805,7 +1998,7 @@ export function CommuneDetail() {
 
               {/* ── Détail score santé financière ────────────────────────── */}
               {(() => {
-                const fs = computeFinancialScore(finances.agregats, finances.evolution_yoy ?? {});
+                const fs = financialScore;
                 if (!fs) return null;
                 const c = NOTE_META[fs.note];
                 return (
@@ -1816,7 +2009,10 @@ export function CommuneDetail() {
                         <div className="flex items-center gap-4">
                           <ShieldCheck size={28} className={c.text} />
                           <div>
-                            <p className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-0.5">Score de santé financière</p>
+                            <p className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-0.5 flex items-center gap-2">
+                              Score de santé financière
+                              <StaleDataBadge selected={year} effective={effFin} />
+                            </p>
                             <div className="flex items-baseline gap-3">
                               <span className={`text-5xl font-black ${c.text}`}>{fs.note}</span>
                               <span className="text-slate-300 text-xl font-semibold">{c.label}</span>
@@ -1909,6 +2105,104 @@ export function CommuneDetail() {
                   </div>
                 );
               })()}
+
+              {/* ── Évolution du score de santé financière ── */}
+              {(() => {
+                const hist = finTab?.scoreHistorique?.historique;
+                if (!hist || hist.length < 2) return null;
+                const NOTE_BANDS: { note: string; min: number; label: string }[] = [
+                  { note: "AAA", min: 85, label: "AAA" },
+                  { note: "AA",  min: 75, label: "AA"  },
+                  { note: "A",   min: 65, label: "A"   },
+                  { note: "BBB", min: 55, label: "BBB" },
+                  { note: "BB",  min: 45, label: "BB"  },
+                  { note: "B",   min: 30, label: "B"   },
+                  { note: "CCC", min: 0,  label: "CCC" },
+                ];
+                return (
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                    <h2 className="text-sm font-bold text-white mb-5 flex items-center gap-2">
+                      <ShieldCheck size={16} className="text-blue-400" />
+                      Évolution du score de santé financière
+                    </h2>
+                    <ResponsiveContainer width="100%" height={240}>
+                      <LineChart data={hist} margin={{ top: 12, right: 20, bottom: 0, left: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                        <XAxis dataKey="annee" tick={{ fill: "#94a3b8", fontSize: 11 }} />
+                        <YAxis
+                          domain={[0, 100]}
+                          tick={{ fill: "#94a3b8", fontSize: 11 }}
+                          width={36}
+                          ticks={[0, 30, 45, 55, 65, 75, 85, 100]}
+                          tickFormatter={(v: number) => {
+                            const band = NOTE_BANDS.find(b => b.min === v);
+                            return band ? band.label : String(v);
+                          }}
+                        />
+                        <Tooltip
+                          contentStyle={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 8, fontSize: 12 }}
+                          labelStyle={{ color: "#cbd5e1" }}
+                          formatter={(value: unknown, _: string, props: any) => {
+                            const row = props.payload;
+                            const color = NOTE_COLOR[row.note] ?? "#94a3b8";
+                            return [
+                              <span key="v">
+                                <span style={{ color }} className="font-bold">{row.note}</span>
+                                <span className="text-slate-400 ml-1">· {String(value)} pts</span>
+                              </span>,
+                              "Score",
+                            ];
+                          }}
+                        />
+                        {/* Note threshold lines */}
+                        {NOTE_BANDS.slice(0, -1).map(b => (
+                          <ReferenceLine
+                            key={b.note}
+                            y={b.min}
+                            stroke={NOTE_COLOR[b.note]}
+                            strokeOpacity={0.25}
+                            strokeDasharray="4 3"
+                          />
+                        ))}
+                        <Line
+                          type="monotone"
+                          dataKey="score"
+                          stroke="#475569"
+                          strokeWidth={2}
+                          dot={(props: any) => {
+                            const { cx, cy, payload } = props;
+                            const color = NOTE_COLOR[payload.note] ?? "#64748b";
+                            const isCurrent = payload.annee === effFin;
+                            const r = isCurrent ? 7 : 5;
+                            return (
+                              <g key={`dot-${payload.annee}`}>
+                                <circle
+                                  cx={cx} cy={cy}
+                                  r={r}
+                                  fill={color}
+                                  stroke={isCurrent ? "#fff" : "transparent"}
+                                  strokeWidth={isCurrent ? 2 : 0}
+                                />
+                                <text
+                                  x={cx}
+                                  y={cy - r - 4}
+                                  textAnchor="middle"
+                                  fontSize={10}
+                                  fontWeight={700}
+                                  fill={color}
+                                >
+                                  {payload.note}
+                                </text>
+                              </g>
+                            );
+                          }}
+                          activeDot={{ r: 7 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                );
+              })()}
             </div>
             )}
 
@@ -1940,6 +2234,49 @@ export function CommuneDetail() {
                         · rang 1 = valeur la plus haute
                       </p>
                     </div>
+
+                    {/* ── Score de santé financière ── */}
+                    {financialScore && scoreRaw && (() => {
+                      const sr = scoreRaw as ScoreApiResponse;
+                      const c  = NOTE_META[financialScore.note];
+                      const rang = sr.rang_score;
+                      const nb   = sr.nb_communes_tranche;
+                      const pct  = rang && nb ? Math.round((1 - (rang - 1) / nb) * 100) : null;
+                      return (
+                        <div className={`rounded-2xl border p-5 bg-gradient-to-br ${c.bg} ${c.border}`}>
+                          <div className="flex items-center justify-between gap-4 flex-wrap">
+                            <div className="flex items-center gap-4">
+                              <div className="text-center">
+                                <div className={`text-4xl font-black ${c.text}`}>{financialScore.note}</div>
+                                <div className="text-xs text-slate-400 mt-0.5">{NOTE_META[financialScore.note].label}</div>
+                              </div>
+                              <div>
+                                <div className="text-sm text-slate-300 font-medium">Score de santé financière</div>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <div className="w-32 h-2 bg-slate-700 rounded-full overflow-hidden">
+                                    <div className={`h-full rounded-full ${c.bar}`} style={{ width: `${financialScore.score}%` }} />
+                                  </div>
+                                  <span className="text-white font-bold text-sm">{financialScore.score}<span className="text-slate-400 font-normal text-xs">/100</span></span>
+                                </div>
+                              </div>
+                            </div>
+                            {rang && nb && (
+                              <div className="text-center bg-slate-900/50 rounded-xl px-5 py-3 border border-slate-700/50">
+                                <div className={`text-3xl font-black ${c.text}`}>
+                                  {rang}<span className="text-slate-400 text-lg font-normal">/{nb}</span>
+                                </div>
+                                <div className="text-xs text-slate-400 mt-0.5">Classement dans sa tranche</div>
+                                {pct !== null && (
+                                  <div className="text-xs text-slate-500 mt-0.5">
+                                    Top <span className={`font-semibold ${pct >= 75 ? "text-emerald-400" : pct >= 50 ? "text-blue-400" : pct >= 25 ? "text-amber-400" : "text-red-400"}`}>{100 - pct}%</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                       {comparison.comparison.slice(0, 8).map((c) => (
@@ -1986,8 +2323,8 @@ export function CommuneDetail() {
                                 Cette commune
                               </th>
                               <th className="px-4 py-3 text-right">Moyenne</th>
-                              <th className="px-4 py-3 text-right">Min</th>
-                              <th className="px-4 py-3 text-right">Max</th>
+                              <th className="px-4 py-3 text-right">P10</th>
+                              <th className="px-4 py-3 text-right">P90</th>
                               <th className="px-4 py-3 text-right">Écart</th>
                               <th className="px-4 py-3 text-right whitespace-nowrap">
                                 Classement
@@ -2020,10 +2357,10 @@ export function CommuneDetail() {
                                     {formatEuro(c.moyenne_tranche)}
                                   </td>
                                   <td className="px-4 py-3 text-right text-slate-400 text-xs">
-                                    {formatEuro(c.min_tranche)}
+                                    {c.p10_tranche != null ? formatEuro(c.p10_tranche) : "—"}
                                   </td>
                                   <td className="px-4 py-3 text-right text-slate-400 text-xs">
-                                    {formatEuro(c.max_tranche)}
+                                    {c.p90_tranche != null ? formatEuro(c.p90_tranche) : "—"}
                                   </td>
                                   <td className="px-4 py-3 text-right">
                                     {diff !== null ? (
@@ -2154,78 +2491,261 @@ export function CommuneDetail() {
                     <Loader2 size={16} className="animate-spin" /> Qualité de l'eau…
                   </div>
                 )}
-                {eau && (
-                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-                    <div className="flex items-center justify-between mb-1">
-                      <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                        <Waves size={15} className="text-cyan-400" />
-                        Eau potable
-                      </h2>
-                      <span className="text-xs text-slate-500">
-                        {eau.nb_prelevements} prélèvements · dernier le{" "}
-                        {eau.derniere_analyse
-                          ? new Date(eau.derniere_analyse).toLocaleDateString("fr-FR")
-                          : "—"}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-500 mb-5">
-                      Source : Hub'Eau — Contrôle sanitaire (Ministère de la Santé)
-                      {eau.distributeur && <> · {eau.distributeur}</>}
-                    </p>
-                    <div className="grid grid-cols-2 gap-4">
-                      {/* Bactériologique */}
-                      <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
-                        <p className="text-xs text-slate-400 uppercase tracking-wide mb-3">Conformité bactériologique</p>
-                        {eau.taux_conformite_bact !== null ? (
-                          <>
-                            <div className="flex items-end gap-1 mb-2">
-                              <span className={`text-3xl font-bold ${eau.taux_conformite_bact >= 99 ? "text-emerald-400" : eau.taux_conformite_bact >= 95 ? "text-yellow-400" : "text-red-400"}`}>
-                                {eau.taux_conformite_bact.toFixed(1)}%
-                              </span>
-                              <span className="text-slate-500 text-sm mb-1">conformes</span>
+                {eau && (() => {
+                  // Dureté : classification
+                  const thClass = (th: number | null) => {
+                    if (th === null) return null;
+                    if (th < 7)  return { label: "Très douce",       color: "text-sky-300",    bg: "bg-sky-900/30",    border: "border-sky-700/40" };
+                    if (th < 15) return { label: "Douce",            color: "text-cyan-400",   bg: "bg-cyan-900/30",   border: "border-cyan-700/40" };
+                    if (th < 25) return { label: "Modérément dure",  color: "text-teal-400",   bg: "bg-teal-900/30",   border: "border-teal-700/40" };
+                    if (th < 42) return { label: "Dure",             color: "text-amber-400",  bg: "bg-amber-900/30",  border: "border-amber-700/40" };
+                    return              { label: "Très dure",         color: "text-orange-400", bg: "bg-orange-900/30", border: "border-orange-700/40" };
+                  };
+                  const th = thClass(eau.th_avg);
+                  const conformBadge = (v: number | null) =>
+                    v === null ? null : v >= 99 ? "text-emerald-400" : v >= 95 ? "text-yellow-400" : "text-red-400";
+                  const conformBar = (v: number | null) =>
+                    v === null ? "" : v >= 99 ? "bg-emerald-400" : v >= 95 ? "bg-yellow-400" : "bg-red-400";
+
+                  return (
+                    <div className="space-y-4">
+                      {/* Header */}
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                        <div className="flex items-center justify-between mb-1">
+                          <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                            <Waves size={15} className="text-cyan-400" />
+                            Eau potable
+                          </h2>
+                          <span className="text-xs text-slate-500">
+                            {eau.nb_prelevements} prélèvements · dernier le{" "}
+                            {eau.derniere_analyse ? new Date(eau.derniere_analyse).toLocaleDateString("fr-FR") : "—"}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 mb-5">
+                          Source : Hub'Eau — Contrôle sanitaire DIS (Ministère de la Santé)
+                          {eau.distributeur && <> · <span className="text-slate-400">{eau.distributeur}</span></>}
+                        </p>
+
+                        {/* Conformité */}
+                        <div className="grid grid-cols-2 gap-3">
+                          {[
+                            { label: "Conformité bactériologique", v: eau.taux_conformite_bact, nc: eau.nb_non_conformes_bact },
+                            { label: "Conformité physico-chimique", v: eau.taux_conformite_pc,  nc: eau.nb_non_conformes_pc },
+                          ].map(({ label, v, nc }) => (
+                            <div key={label} className="bg-slate-800 border border-slate-700 rounded-xl p-4">
+                              <p className="text-xs text-slate-400 uppercase tracking-wide mb-3">{label}</p>
+                              {v !== null ? (
+                                <>
+                                  <div className="flex items-end gap-1 mb-2">
+                                    <span className={`text-3xl font-bold ${conformBadge(v)}`}>{v.toFixed(1)}%</span>
+                                    <span className="text-slate-500 text-sm mb-1">conformes</span>
+                                  </div>
+                                  <div className="w-full bg-slate-700 rounded-full h-1.5">
+                                    <div className={`h-1.5 rounded-full ${conformBar(v)}`} style={{ width: `${v}%` }} />
+                                  </div>
+                                  {nc > 0 && <p className="text-xs text-red-400 mt-2">{nc} non-conforme(s)</p>}
+                                </>
+                              ) : <p className="text-slate-500 text-sm">Non renseigné</p>}
                             </div>
-                            <div className="w-full bg-slate-700 rounded-full h-1.5">
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Dureté — grande carte */}
+                      {eau.th_avg !== null && th && (
+                        <div className={`rounded-2xl border ${th.border} ${th.bg} p-5`}>
+                          <div className="flex items-center justify-between flex-wrap gap-4">
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">Dureté de l'eau (TH)</p>
+                              <div className="flex items-baseline gap-2">
+                                <span className={`text-4xl font-black ${th.color}`}>{eau.th_avg.toFixed(1)}</span>
+                                <span className="text-slate-400 text-sm">°f (degrés français)</span>
+                              </div>
+                              <span className={`inline-block mt-1 text-sm font-semibold ${th.color}`}>{th.label}</span>
+                              {eau.physico_annee?.th_avg && eau.derniere_annee && eau.physico_annee.th_avg < eau.derniere_annee && (
+                                <p className="text-xs text-red-400 flex items-center gap-1 mt-1">
+                                  <AlertCircle size={11} /> données de {eau.physico_annee.th_avg}
+                                </p>
+                              )}
+                            </div>
+                            <div className="text-xs text-slate-400 space-y-0.5 text-right">
+                              <div><span className="text-sky-300">■</span> &lt; 7°f très douce</div>
+                              <div><span className="text-cyan-400">■</span> 7–15°f douce</div>
+                              <div><span className="text-teal-400">■</span> 15–25°f modérément dure</div>
+                              <div><span className="text-amber-400">■</span> 25–42°f dure</div>
+                              <div><span className="text-orange-400">■</span> &gt; 42°f très dure</div>
+                            </div>
+                          </div>
+                          {/* Jauge */}
+                          <div className="mt-4">
+                            <div className="w-full h-2 rounded-full bg-gradient-to-r from-sky-400 via-teal-400 via-amber-400 to-orange-500 relative">
                               <div
-                                className={`h-1.5 rounded-full ${eau.taux_conformite_bact >= 99 ? "bg-emerald-400" : eau.taux_conformite_bact >= 95 ? "bg-yellow-400" : "bg-red-400"}`}
-                                style={{ width: `${eau.taux_conformite_bact}%` }}
+                                className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white border-2 border-slate-800 shadow"
+                                style={{ left: `${Math.min(100, (eau.th_avg / 50) * 100)}%`, transform: "translateX(-50%) translateY(-50%)" }}
                               />
                             </div>
-                            {eau.nb_non_conformes_bact > 0 && (
-                              <p className="text-xs text-red-400 mt-2">{eau.nb_non_conformes_bact} non-conforme(s)</p>
-                            )}
-                          </>
-                        ) : (
-                          <p className="text-slate-500 text-sm">Non renseigné</p>
-                        )}
-                      </div>
-                      {/* Physico-chimique */}
-                      <div className="bg-slate-800 border border-slate-700 rounded-xl p-4">
-                        <p className="text-xs text-slate-400 uppercase tracking-wide mb-3">Conformité physico-chimique</p>
-                        {eau.taux_conformite_pc !== null ? (
-                          <>
-                            <div className="flex items-end gap-1 mb-2">
-                              <span className={`text-3xl font-bold ${eau.taux_conformite_pc >= 99 ? "text-emerald-400" : eau.taux_conformite_pc >= 95 ? "text-yellow-400" : "text-red-400"}`}>
-                                {eau.taux_conformite_pc.toFixed(1)}%
-                              </span>
-                              <span className="text-slate-500 text-sm mb-1">conformes</span>
+                            <div className="flex justify-between text-[10px] text-slate-500 mt-1">
+                              <span>0°f</span><span>7</span><span>15</span><span>25</span><span>42</span><span>50+</span>
                             </div>
-                            <div className="w-full bg-slate-700 rounded-full h-1.5">
-                              <div
-                                className={`h-1.5 rounded-full ${eau.taux_conformite_pc >= 99 ? "bg-emerald-400" : eau.taux_conformite_pc >= 95 ? "bg-yellow-400" : "bg-red-400"}`}
-                                style={{ width: `${eau.taux_conformite_pc}%` }}
-                              />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Autres paramètres */}
+                      {[eau.nitrates_avg, eau.ph_avg, eau.conductivite_avg, eau.turbidite_avg, eau.calcium_avg, eau.sulfates_avg].some(v => v !== null) && (
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-4">Paramètres physico-chimiques moyens</h3>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            {([
+                              { label: "Nitrates",     val: eau.nitrates_avg,     field: "nitrates_avg",     unite: "mg/L",  warn: eau.nitrates_avg !== null && eau.nitrates_avg > 25, limit: "limite 50 mg/L" },
+                              { label: "pH",           val: eau.ph_avg,           field: "ph_avg",           unite: "",      warn: eau.ph_avg !== null && (eau.ph_avg < 6.5 || eau.ph_avg > 9), limit: "normal 6,5–9" },
+                              { label: "Conductivité", val: eau.conductivite_avg, field: "conductivite_avg", unite: "µS/cm", warn: false, limit: "minéralisation" },
+                              { label: "Turbidité",    val: eau.turbidite_avg,    field: "turbidite_avg",    unite: "NFU",   warn: eau.turbidite_avg !== null && eau.turbidite_avg > 1, limit: "limite 1 NFU" },
+                              { label: "Calcium",      val: eau.calcium_avg,      field: "calcium_avg",      unite: "mg/L",  warn: false, limit: "" },
+                              { label: "Sulfates",     val: eau.sulfates_avg,     field: "sulfates_avg",     unite: "mg/L",  warn: eau.sulfates_avg !== null && eau.sulfates_avg > 200, limit: "limite 250 mg/L" },
+                            ] as { label: string; val: number | null; field: string; unite: string; warn: boolean; limit: string }[]).filter(p => p.val !== null).map(({ label, val, field, unite, warn, limit }) => {
+                              const paramAnnee = eau.physico_annee?.[field];
+                              const stale = paramAnnee && eau.derniere_annee && paramAnnee < eau.derniere_annee;
+                              return (
+                              <div key={label} className={`rounded-xl border p-3 ${warn ? "border-amber-700/50 bg-amber-900/20" : "border-slate-700 bg-slate-800"}`}>
+                                <p className="text-[10px] text-slate-500 mb-1">{label}</p>
+                                <p className={`text-xl font-bold ${warn ? "text-amber-400" : "text-white"}`}>
+                                  {val!.toFixed(val! < 10 ? 2 : 1)}{unite && <span className="text-xs font-normal text-slate-400 ml-1">{unite}</span>}
+                                </p>
+                                {limit && <p className="text-[10px] text-slate-500 mt-0.5">{limit}</p>}
+                                {warn && <p className="text-[10px] text-amber-400 mt-0.5">⚠ à surveiller</p>}
+                                {stale && <p className="text-[10px] text-red-400 flex items-center gap-0.5 mt-0.5"><AlertCircle size={9} /> {paramAnnee}</p>}
+                              </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Historique */}
+                      {eau.series.length > 1 && (
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+                          <div className="px-5 py-3 border-b border-slate-800">
+                            <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">Historique des contrôles</h3>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="border-b border-slate-800 text-slate-500 uppercase tracking-wide">
+                                  <th className="px-4 py-2 text-left">Année</th>
+                                  <th className="px-4 py-2 text-right">Prélèv.</th>
+                                  <th className="px-4 py-2 text-right">Bact.</th>
+                                  <th className="px-4 py-2 text-right">Chim.</th>
+                                  <th className="px-4 py-2 text-right">TH (°f)</th>
+                                  <th className="px-4 py-2 text-right">Nitrates</th>
+                                  <th className="px-4 py-2 text-right">pH</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {eau.series.map((s, i) => (
+                                  <tr key={s.annee} className={`border-b border-slate-800/40 ${i % 2 === 0 ? "" : "bg-slate-800/10"}`}>
+                                    <td className="px-4 py-2 font-semibold text-slate-300">{s.annee}</td>
+                                    <td className="px-4 py-2 text-right text-slate-400">{s.nb_prelevements}</td>
+                                    <td className={`px-4 py-2 text-right font-medium ${s.taux_conformite_bact !== null ? conformBadge(s.taux_conformite_bact) : "text-slate-600"}`}>
+                                      {s.taux_conformite_bact !== null ? `${s.taux_conformite_bact.toFixed(1)}%` : "—"}
+                                    </td>
+                                    <td className={`px-4 py-2 text-right font-medium ${s.taux_conformite_pc !== null ? conformBadge(s.taux_conformite_pc) : "text-slate-600"}`}>
+                                      {s.taux_conformite_pc !== null ? `${s.taux_conformite_pc.toFixed(1)}%` : "—"}
+                                    </td>
+                                    <td className="px-4 py-2 text-right text-slate-300">{s.th_avg !== null ? s.th_avg.toFixed(1) : "—"}</td>
+                                    <td className={`px-4 py-2 text-right ${s.nitrates_avg !== null && s.nitrates_avg > 25 ? "text-amber-400" : "text-slate-300"}`}>
+                                      {s.nitrates_avg !== null ? `${s.nitrates_avg.toFixed(1)} mg/L` : "—"}
+                                    </td>
+                                    <td className="px-4 py-2 text-right text-slate-300">{s.ph_avg !== null ? s.ph_avg.toFixed(2) : "—"}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Graphique mensuel */}
+                      {eauMensuel?.points?.length > 0 && (() => {
+                        const eauParamOptions: { key: typeof eauParam; label: string; color: string; unit: string }[] = [
+                          { key: "th_avg",           label: "Dureté (TH)",    color: "#22d3ee", unit: "°f"     },
+                          { key: "nitrates_avg",      label: "Nitrates",       color: "#f59e0b", unit: "mg/L"   },
+                          { key: "ph_avg",            label: "pH",             color: "#a78bfa", unit: ""       },
+                          { key: "conductivite_avg",  label: "Conductivité",   color: "#34d399", unit: "µS/cm"  },
+                          { key: "turbidite_avg",     label: "Turbidité",      color: "#fb923c", unit: "NFU"    },
+                          { key: "calcium_avg",       label: "Calcium",        color: "#60a5fa", unit: "mg/L"   },
+                          { key: "sulfates_avg",      label: "Sulfates",       color: "#f472b6", unit: "mg/L"   },
+                        ];
+                        const availableParams = eauParamOptions.filter(opt =>
+                          eauMensuel.points.some((p: any) => p[opt.key] != null)
+                        );
+                        const selOpt = availableParams.find(p => p.key === eauParam) ?? availableParams[0];
+                        const sel = selOpt ?? eauParamOptions[0];
+                        const chartData = eauMensuel.points;
+                        // Premier mois de chaque année présent dans les données → label d'année
+                        const firstLabelPerYear = new Set<string>();
+                        let lastYr = -1;
+                        for (const p of chartData) {
+                          if (p.annee !== lastYr) { firstLabelPerYear.add(p.label); lastYr = p.annee; }
+                        }
+                        const decimals = sel.key === "ph_avg" ? 2 : 1;
+                        return (
+                          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                              <h3 className="text-sm font-semibold text-white">Évolution mensuelle</h3>
+                              <div className="flex flex-wrap gap-1">
+                                {eauParamOptions.map(p => {
+                                  const hasData = availableParams.some(a => a.key === p.key);
+                                  const active = sel.key === p.key;
+                                  return (
+                                    <button key={p.key}
+                                      onClick={() => hasData && setEauParam(p.key)}
+                                      disabled={!hasData}
+                                      title={!hasData ? "Pas de données disponibles" : undefined}
+                                      className={`px-2 py-1 rounded text-xs font-medium transition-colors ${active ? "text-white" : hasData ? "text-slate-400 hover:text-slate-200" : "text-slate-700 cursor-not-allowed line-through"}`}
+                                      style={active ? { backgroundColor: p.color + "33", color: p.color, borderColor: p.color, border: "1px solid" } : {}}>
+                                      {p.label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
                             </div>
-                            {eau.nb_non_conformes_pc > 0 && (
-                              <p className="text-xs text-red-400 mt-2">{eau.nb_non_conformes_pc} non-conforme(s)</p>
-                            )}
-                          </>
-                        ) : (
-                          <p className="text-slate-500 text-sm">Non renseigné</p>
-                        )}
-                      </div>
+                            <ResponsiveContainer width="100%" height={220}>
+                              <LineChart data={chartData} margin={{ top: 4, right: 8, left: 8, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                                <XAxis dataKey="label" tick={{ fontSize: 10, fill: "#64748b" }}
+                                  interval={0}
+                                  tickFormatter={(v: string) => firstLabelPerYear.has(v)
+                                    ? String(chartData.find((p: any) => p.label === v)?.annee ?? "")
+                                    : ""}
+                                  height={20} />
+                                <YAxis tick={{ fontSize: 10, fill: "#64748b" }} width={50}
+                                  tickFormatter={(v: number) => `${v.toFixed(decimals)} ${sel.unit}`} />
+                                <Tooltip
+                                  contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #334155", borderRadius: 8, fontSize: 12 }}
+                                  labelStyle={{ color: "#94a3b8" }}
+                                  formatter={(v: number) => [`${v.toFixed(decimals)} ${sel.unit}`, sel.label]}
+                                />
+                                {/* ligne pointillée dans les trous */}
+                                <Line type="monotone" dataKey={eauParam} stroke={sel.color} strokeWidth={1.5}
+                                  strokeDasharray="4 4" strokeOpacity={0.35}
+                                  dot={false} activeDot={false} connectNulls={true}
+                                  legendType="none" tooltipType="none" />
+                                {/* ligne pleine sur les vraies mesures */}
+                                <Line type="monotone" dataKey={eauParam} stroke={sel.color} strokeWidth={2}
+                                  dot={(props: any) => {
+                                    if (props.value == null) return <g key={props.key} />;
+                                    return <circle key={props.key} cx={props.cx} cy={props.cy} r={3} fill={sel.color} stroke={sel.color} />;
+                                  }}
+                                  activeDot={{ r: 5 }} connectNulls={false} />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                        );
+                      })()}
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
               </div>
             )}
 
@@ -2291,12 +2811,41 @@ export function CommuneDetail() {
                           marches={marches.marches}
                           showAcheteur={marches.scope === "lieu"}
                         />
-                        {marches.total > marches.marches.length && (
-                          <div className="px-6 py-3 border-t border-slate-800 text-xs text-slate-500 text-center">
-                            {marches.marches.length} sur {marches.total} ·
-                            triés par montant décroissant
+                        {/* ── Pagination ── */}
+                        <div className="px-4 py-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex items-center gap-2 text-xs text-slate-400">
+                            <span>Lignes par page :</span>
+                            {[10, 25, 50, 100].map((n) => (
+                              <button
+                                key={n}
+                                onClick={() => { setMarchesLimit(n); setMarchesPage(1); }}
+                                className={`px-2 py-0.5 rounded ${marchesLimit === n ? "bg-blue-600 text-white" : "bg-slate-800 hover:bg-slate-700 text-slate-300"}`}
+                              >
+                                {n}
+                              </button>
+                            ))}
                           </div>
-                        )}
+                          <div className="flex items-center gap-2 text-xs text-slate-400">
+                            <span>
+                              {((marchesPage - 1) * marchesLimit) + 1}–{Math.min(marchesPage * marchesLimit, marches.total)} sur {marches.total}
+                            </span>
+                            <button
+                              disabled={marchesPage <= 1}
+                              onClick={() => setMarchesPage((p) => p - 1)}
+                              className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                            >
+                              ‹
+                            </button>
+                            <span className="text-slate-300 font-medium">{marchesPage} / {marches.pages ?? 1}</span>
+                            <button
+                              disabled={marchesPage >= (marches.pages ?? 1)}
+                              onClick={() => setMarchesPage((p) => p + 1)}
+                              className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                            >
+                              ›
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </>
@@ -2311,7 +2860,6 @@ export function CommuneDetail() {
                   <div className="flex items-center gap-2 text-slate-400 py-8 justify-center">
                     <Loader2 size={20} className="animate-spin" />
                     Chargement…
-                    <span className="text-slate-600 text-xs ml-1">(premier chargement : ~30s)</span>
                   </div>
                 )}
 
@@ -2319,10 +2867,20 @@ export function CommuneDetail() {
                   const sortedElections = [...historiqueElections.elections].sort((a, b) => b.annee - a.annee);
                   const mostRecentId = sortedElections[0]?.id_election ?? null;
 
+                  // Afficher le maire actuel pour toutes les élections depuis son mandat
                   const mairesParElection: Record<string, string> = {};
-                  if (mostRecentId && elus?.maire) {
+                  if (elus?.maire) {
                     const nom = `${elus.maire.prenom} ${elus.maire.nom}`.trim();
-                    if (nom) mairesParElection[mostRecentId] = nom;
+                    const mandatYear = elus.maire.date_mandat
+                      ? new Date(elus.maire.date_mandat).getFullYear()
+                      : null;
+                    if (nom) {
+                      sortedElections.forEach((e) => {
+                        if (!mandatYear || e.annee >= mandatYear) {
+                          mairesParElection[e.id_election] = nom;
+                        }
+                      });
+                    }
                   }
 
                   const selectedElection = selectedElectionId != null
@@ -2375,6 +2933,14 @@ export function CommuneDetail() {
             {/* ── Tab: Immobilier ──────────────────────────────────────── */}
             {tab === "immobilier" && (
               <div className="space-y-6">
+                {/* ── Pas de données DVF ── */}
+                {!loadingDvfEvo && !loadingDvfTx && !dvfEvo && !dvfTx && (
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center">
+                    <Building2 size={32} className="text-slate-600 mx-auto mb-3" />
+                    <p className="text-slate-400 font-medium mb-1">Pas de données immobilières disponibles</p>
+                    <p className="text-slate-500 text-sm">Cette commune n'a pas de transactions DVF enregistrées dans la base.</p>
+                  </div>
+                )}
                 {/* ── Évolution maisons/appartements (toutes années dispo) ── */}
                 {loadingDvfEvo && !dvfEvo && (
                   <div className="flex items-center gap-2 text-slate-400 py-4 justify-center">
@@ -2405,7 +2971,7 @@ export function CommuneDetail() {
                         Évolution du prix médian au m²
                         <span className="text-xs font-normal text-slate-400 ml-1">maisons & appartements · {yearMin}–{yearMax}</span>
                       </h2>
-                      <p className="text-xs text-slate-500 mb-5">Source : API DVF+ open data — Cerema / DGALN · médiane des ventes par année</p>
+                      <p className="text-xs text-slate-500 mb-5">Source : DVF+ open data — DGFiP / Etalab (transactions individuelles géolocalisées)</p>
                       <ResponsiveContainer width="100%" height={220}>
                         <LineChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
@@ -2465,88 +3031,193 @@ export function CommuneDetail() {
                 })()}
 
                 {/* ── Carte des ventes depuis 2014 ─── */}
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-                  <h2 className="text-sm font-bold text-white mb-1 flex items-center gap-2">
-                    <Building2 size={15} className="text-amber-400" />
-                    Carte des ventes immobilières
-                    <span className="text-xs font-normal text-slate-400 ml-1">ventes 2020–2025 · ~3 000 points</span>
-                  </h2>
-                  <p className="text-xs text-slate-500 mb-4">
-                    Source : DVF géolocalisées — DGFiP / Etalab —
-                    <span className="inline-flex items-center gap-1 ml-2">
-                      <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" /> Maisons
-                    </span>
-                    <span className="inline-flex items-center gap-1 ml-2">
-                      <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" /> Appartements
-                    </span>
-                  </p>
-                  {loadingDvfMap && !dvfMap && (
-                    <div className="flex items-center gap-2 text-slate-400 py-8 justify-center">
-                      <Loader2 size={18} className="animate-spin" />
-                      <span className="text-sm">Chargement de la carte…</span>
+                {(dvfEvo || dvfTx || loadingDvfPoints) && (
+                  <div id="dvf-map-section" className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                    <div className="flex items-center justify-between mb-1">
+                      <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                        <Building2 size={15} className="text-amber-400" />
+                        Carte des ventes immobilières
+                        <span className="text-xs font-normal text-slate-400 ml-1">toutes les ventes géolocalisées disponibles</span>
+                      </h2>
+                      {dvfPoints && dvfPoints.features?.length > 0 && (
+                        <button
+                          onClick={() => {
+                            const next = dvfMapRef.current?.togglePoints();
+                            if (next !== undefined) setDvfPointsVisible(next);
+                          }}
+                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs transition-colors ${dvfPointsVisible ? "bg-slate-700 hover:bg-slate-600 text-slate-300" : "bg-amber-600 hover:bg-amber-500 text-white"}`}
+                        >
+                          <MapPin size={11} />
+                          {dvfPointsVisible ? "Masquer les points" : "Afficher les points"}
+                        </button>
+                      )}
                     </div>
-                  )}
-                  {dvfMap && dvfMap.features.length > 0 && (
-                    <DvfSalesMap mapData={dvfMap} />
-                  )}
-                  {dvfMap && dvfMap.features.length === 0 && (
-                    <p className="text-xs text-slate-500 py-4 text-center">Aucune vente géolocalisée disponible.</p>
-                  )}
-                </div>
+                    <p className="text-xs text-slate-500 mb-4">
+                      Source : DVF+ open data — DGFiP / Etalab —
+                      <span className="inline-flex items-center gap-1 ml-2">
+                        <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" /> Maisons
+                      </span>
+                      <span className="inline-flex items-center gap-1 ml-2">
+                        <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" /> Appartements
+                      </span>
+                    </p>
+                    {loadingDvfPoints && !dvfPoints && (
+                      <div className="flex items-center gap-2 text-slate-400 py-8 justify-center">
+                        <Loader2 size={18} className="animate-spin" />
+                        <span className="text-sm">Chargement de la carte…</span>
+                      </div>
+                    )}
+                    {dvfPoints && dvfPoints.features?.length > 0 && (
+                      <DvfSalesMap ref={dvfMapRef} pointsData={dvfPoints} />
+                    )}
+                    {!loadingDvfPoints && (!dvfPoints || dvfPoints.features?.length === 0) && (
+                      <p className="text-xs text-slate-500 py-4 text-center">Aucune vente géolocalisée disponible.</p>
+                    )}
+                  </div>
+                )}
 
                 {/* ── Transactions de l'année sélectionnée ─── */}
-                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-                  <h2 className="text-sm font-bold text-white mb-1 flex items-center gap-2">
-                    <Building2 size={15} className="text-emerald-400" />
-                    Transactions {effTx}
-                    {year !== effTx && <StaleDataBadge selected={year} effective={effTx} />}
-                    <span className="text-xs font-normal text-slate-400 ml-1">· max 500</span>
-                  </h2>
-                  <p className="text-xs text-slate-500 mb-4">Source : DVF+ open data Cerema — valeurs nettes vendeur, hors frais de notaire</p>
-                  {loadingDvfTx && !dvfTx && (
-                    <div className="flex items-center gap-2 text-slate-400 py-4 justify-center">
-                      <Loader2 size={18} className="animate-spin" />
-                      <span className="text-sm">Chargement des transactions…</span>
-                    </div>
-                  )}
-                  {dvfTx && dvfTx.transactions.length === 0 && (
-                    <p className="text-xs text-slate-500 py-4 text-center">Aucune transaction enregistrée pour {effTx}.</p>
-                  )}
-                  {dvfTx && dvfTx.transactions.length > 0 && (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs">
-                        <thead>
-                          <tr className="text-slate-400 border-b border-slate-700">
-                            <th className="text-left py-2 pr-3 font-medium">Date</th>
-                            <th className="text-left py-2 pr-3 font-medium">Type</th>
-                            <th className="text-right py-2 pr-3 font-medium">Surface</th>
-                            <th className="text-right py-2 pr-3 font-medium">Prix total</th>
-                            <th className="text-right py-2 font-medium">€/m²</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {dvfTx.transactions.map((tx, i) => {
-                            const isAppt   = tx.codtypbien.startsWith("12");
-                            const isMaison = tx.codtypbien.startsWith("11");
-                            const typeColor = isAppt ? "text-blue-400" : isMaison ? "text-amber-400" : "text-slate-400";
-                            const typeShort = isAppt ? "Appt" : isMaison ? "Maison" : tx.type.split(" ").slice(-1)[0];
-                            return (
-                              <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
-                                <td className="py-1.5 pr-3 text-slate-300">{tx.date ? new Date(tx.date).toLocaleDateString("fr-FR", { month: "short", year: "numeric" }) : "—"}</td>
-                                <td className={`py-1.5 pr-3 font-medium ${typeColor}`}>
-                                  {typeShort}{tx.vefa ? <span className="ml-1 text-[10px] text-violet-400">VEFA</span> : null}
-                                </td>
-                                <td className="py-1.5 pr-3 text-right text-slate-300">{tx.surface_bati} m²</td>
-                                <td className="py-1.5 pr-3 text-right text-slate-300">{new Intl.NumberFormat("fr-FR").format(tx.prix)} €</td>
-                                <td className="py-1.5 text-right font-semibold text-white">{new Intl.NumberFormat("fr-FR").format(tx.prix_m2)} €</td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
+                {(dvfEvo || dvfTx || loadingDvfTx) && (
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                    <h2 className="text-sm font-bold text-white mb-1 flex items-center gap-2">
+                      <Building2 size={15} className="text-emerald-400" />
+                      Transactions {effTx}
+                      {year !== effTx && <StaleDataBadge selected={year} effective={effTx} />}
+                      {dvfTx && <span className="text-xs font-normal text-slate-400 ml-1">· {dvfTx.total} ventes</span>}
+                    </h2>
+                    <p className="text-xs text-slate-500 mb-4">Source : DVF+ open data — DGFiP / Etalab — valeurs nettes vendeur, hors frais de notaire</p>
+                    {loadingDvfTx && (
+                      <div className="flex items-center gap-2 text-slate-400 py-4 justify-center">
+                        <Loader2 size={18} className="animate-spin" />
+                        <span className="text-sm">Chargement des transactions…</span>
+                      </div>
+                    )}
+                    {!loadingDvfTx && (!dvfTx || dvfTx.transactions.length === 0) && (
+                      <p className="text-xs text-slate-500 py-4 text-center">Aucune transaction enregistrée pour {effTx}.</p>
+                    )}
+                    {dvfTx && dvfTx.transactions.length > 0 && (() => {
+                      const fmtNum = new Intl.NumberFormat("fr-FR");
+                      type SortCol = "date" | "surface" | "prix" | "prix_m2";
+                      const SortTh = ({ col, align = "right", children }: { col: SortCol; align?: "left"|"right"; children: React.ReactNode }) => {
+                        const active = dvfTxSortBy === col;
+                        const nextDir = active && dvfTxSortDir === "desc" ? "asc" : "desc";
+                        return (
+                          <th
+                            className={`py-2 pr-3 font-medium cursor-pointer select-none group ${align === "right" ? "text-right" : "text-left"} ${active ? "text-white" : "text-slate-400 hover:text-slate-200"} transition-colors`}
+                            onClick={() => { setDvfTxSortBy(col); setDvfTxSortDir(active ? nextDir : "desc"); setDvfTxPage(1); }}
+                          >
+                            <span className="inline-flex items-center gap-1">
+                              {children}
+                              <span className="text-[10px]">
+                                {active ? (dvfTxSortDir === "desc" ? "↓" : "↑") : <span className="opacity-0 group-hover:opacity-40">↓</span>}
+                              </span>
+                            </span>
+                          </th>
+                        );
+                      };
+                      return (
+                        <>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="border-b border-slate-700">
+                                  <SortTh col="date" align="left">Date</SortTh>
+                                  <th className="text-left py-2 pr-3 font-medium text-slate-400">Type</th>
+                                  <SortTh col="surface">Surface</SortTh>
+                                  <SortTh col="prix">Prix total</SortTh>
+                                  <SortTh col="prix_m2">€/m²</SortTh>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {dvfTx.transactions.map((tx, i) => {
+                                  const isAppt   = tx.codtypbien === "Appartement";
+                                  const isMaison = tx.codtypbien === "Maison";
+                                  const typeColor = isAppt ? "text-blue-400" : isMaison ? "text-amber-400" : "text-slate-400";
+                                  const typeShort = isAppt ? "Appt" : isMaison ? "Maison" : (tx.type || tx.codtypbien || "—");
+                                  const hasGeo = tx.lat != null && tx.lon != null;
+                                  const handleLocate = hasGeo ? () => {
+                                    const feat = dvfPoints?.features?.find((f: any) => {
+                                      const [flon, flat] = f.geometry.coordinates;
+                                      return Math.abs(flat - tx.lat!) < 0.00001 && Math.abs(flon - tx.lon!) < 0.00001;
+                                    });
+                                    if (!feat?.properties?.id) return;
+                                    const emoji = isMaison ? "🏠" : isAppt ? "🏢" : "🏠";
+                                    const prixStr    = tx.prix    ? `${fmtNum.format(tx.prix)} €`    : "–";
+                                    const prixM2Str  = tx.prix_m2 ? `${fmtNum.format(tx.prix_m2)} €/m²` : "–";
+                                    const surfaceStr = tx.surface_bati ? `${tx.surface_bati} m²`    : "–";
+                                    const dateStr    = tx.date ? new Date(tx.date).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }) : "–";
+                                    const popup = `<div style="font-size:12px;line-height:1.8;min-width:160px">
+                                      <strong style="font-size:13px">${emoji} ${typeShort}${tx.vefa ? " · VEFA" : ""}</strong><br/>
+                                      <span style="color:#888">${dateStr}</span><br/>
+                                      <strong>${prixM2Str}</strong><br/>
+                                      <span style="color:#555">${prixStr}</span> · <span style="color:#555">${surfaceStr}</span>
+                                    </div>`;
+                                    dvfMapRef.current?.isolateId(feat.properties.id, popup);
+                                    setDvfPointsVisible(false);
+                                    document.getElementById("dvf-map-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
+                                  } : undefined;
+                                  return (
+                                    <tr
+                                      key={i}
+                                      className={`border-b border-slate-800/50 transition-colors ${hasGeo ? "cursor-pointer hover:bg-emerald-900/20 group" : "hover:bg-slate-800/30"}`}
+                                      onClick={handleLocate}
+                                      title={hasGeo ? "Cliquer pour localiser sur la carte" : undefined}
+                                    >
+                                      <td className="py-1.5 pr-3 text-slate-300 flex items-center gap-1.5">
+                                        {tx.date ? new Date(tx.date).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" }) : "—"}
+                                        {hasGeo && <MapPin size={10} className="text-slate-600 group-hover:text-emerald-400 transition-colors flex-shrink-0" />}
+                                      </td>
+                                      <td className={`py-1.5 pr-3 font-medium ${typeColor}`}>
+                                        {typeShort}{tx.vefa ? <span className="ml-1 text-[10px] text-violet-400">VEFA</span> : null}
+                                      </td>
+                                      <td className="py-1.5 pr-3 text-right text-slate-300">{tx.surface_bati ? `${tx.surface_bati} m²` : "—"}</td>
+                                      <td className="py-1.5 pr-3 text-right text-slate-300">{tx.prix ? `${fmtNum.format(tx.prix)} €` : "—"}</td>
+                                      <td className="py-1.5 text-right font-semibold text-white">{tx.prix_m2 ? `${fmtNum.format(tx.prix_m2)} €` : "—"}</td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                          <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-800 gap-4">
+                            <div className="flex items-center gap-2 text-xs text-slate-500">
+                              <span>Lignes :</span>
+                              {[25, 50, 100].map(n => (
+                                <button
+                                  key={n}
+                                  onClick={() => { setDvfTxPageSize(n); setDvfTxPage(1); }}
+                                  className={`px-2 py-0.5 rounded ${dvfTxPageSize === n ? "bg-emerald-600 text-white" : "bg-slate-800 hover:bg-slate-700 text-slate-300"}`}
+                                >{n}</button>
+                              ))}
+                            </div>
+                            {dvfTx.pages > 1 && (
+                              <div className="flex items-center gap-3">
+                                <span className="text-xs text-slate-500">
+                                  {((dvfTx.page - 1) * dvfTxPageSize) + 1}–{Math.min(dvfTx.page * dvfTxPageSize, dvfTx.total)} sur {fmtNum.format(dvfTx.total)}
+                                </span>
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => setDvfTxPage(p => Math.max(1, p - 1))}
+                                    disabled={dvfTx.page <= 1}
+                                    className="px-3 py-1 text-xs rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                  >← Préc.</button>
+                                  <button
+                                    onClick={() => setDvfTxPage(p => Math.min(dvfTx.pages, p + 1))}
+                                    disabled={dvfTx.page >= dvfTx.pages}
+                                    className="px-3 py-1 text-xs rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                                  >Suiv. →</button>
+                                </div>
+                              </div>
+                            )}
+                            {dvfTx.pages <= 1 && (
+                              <span className="text-xs text-slate-500">{fmtNum.format(dvfTx.total)} ventes</span>
+                            )}
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
 
                 {/* ── Loyers de marché (données 2023) ─── */}
                 {errorImmo && (
@@ -2675,15 +3346,7 @@ export function CommuneDetail() {
         )}
       </div>
 
-      <footer className="mt-16 border-t border-slate-800 bg-slate-900/50">
-        <div className="max-w-7xl mx-auto px-6 py-5 flex items-center justify-between text-xs text-slate-500">
-          <p>
-            Sources : OFGL · DGFiP · Agence ORE · Ecolab · geo.api.gouv.fr ·
-            data.gouv.fr
-          </p>
-          <p>Licence Etalab 2.0</p>
-        </div>
-      </footer>
+      <Footer dark />
     </div>
   );
 }

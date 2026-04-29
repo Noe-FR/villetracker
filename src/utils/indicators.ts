@@ -14,13 +14,12 @@ const HIGHER_IS_BETTER = new Set([
   "Impôts et taxes",
   "Impôts locaux",
   "Ventes de biens et services",
-  "Dotation globale de fonctionnement",
-  "Concours de l'Etat",
-  "Fiscalité reversée",
   "Subventions reçues et participations",
   "Autres recettes de fonctionnement",
   "Autres recettes d'investissement",
   "FCTVA",
+  // DGF, Fiscalité reversée et Concours de l'Etat volontairement exclus :
+  // leur niveau reflète la péréquation et la structure interco, pas la qualité de gestion.
 ]);
 
 export function higherIsBetter(agregat: string): boolean {

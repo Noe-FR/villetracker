@@ -1,21 +1,12 @@
 import type {
-  CommuneFinances,
-  CommuneComparison,
-  ComptesData,
-  FiscaliteData,
-  MarchesData,
-  EnergieData,
-  TerritoireData,
-  FiscaliteProData,
-  ElusData,
-  HistoriqueElections,
-  ImmobilierData,
-  DvfEvolutionData,
-  DvfTransactionsData,
-  DvfMapData,
-  EauData,
+  CommuneFinances, CommuneComparison, ComptesData, FiscaliteData,
+  MarchesData, EnergieData, TerritoireData, FiscaliteProData,
+  ElusData, HistoriqueElections, ImmobilierData, DvfEvolutionData,
+  DvfTransactionsData, DvfMapData, EauData, EconomieData,
 } from "../types";
 
+// Tous les appels passent par les Route Handlers Next.js.
+// L'API FastAPI n'est jamais appelée directement depuis le navigateur.
 const BASE = "/api";
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -33,83 +24,145 @@ export interface SearchResult {
   population?: number;
   departement_code?: string;
   departement_nom?: string;
+  codes_postaux?: string[];
 }
 
+export interface CommuneGeoResult {
+  code_insee: string;
+  nom: string;
+  population?: number;
+  departement_code?: string;
+  departement_nom?: string;
+  geometry?: unknown;
+}
+
+const communeData = (codeInsee: string, tab: string, year?: number, page?: number) =>
+  fetchJson<unknown>(
+    `${BASE}/commune/${codeInsee}?tab=${tab}${year ? `&year=${year}` : ""}${page && page > 1 ? `&page=${page}` : ""}`
+  );
+
 export const api = {
-  // Géo
   searchCommunes: (q: string, limit = 10) =>
     fetchJson<{ results: SearchResult[]; total: number }>(
       `${BASE}/geo/search?q=${encodeURIComponent(q)}&limit=${limit}`
     ),
 
-  getCommuneGeo: (codeInsee: string) =>
-    fetchJson<{
-      code_insee: string;
-      nom: string;
-      population?: number;
-      departement_code?: string;
-      departement_nom?: string;
-      geometry?: unknown;
-    }>(`${BASE}/geo/commune/${codeInsee}?geometry=true`),
-
   getCommunesByDept: (deptCode: string) =>
-    fetchJson<GeoJSON.FeatureCollection>(`${BASE}/geo/communes/departement/${deptCode}`),
+    fetchJson<GeoJSON.FeatureCollection>(
+      `${BASE}/geo/communes/departement/${deptCode}`
+    ),
 
-  // Finances (also used as commune summary)
+  getCommuneGeo: (codeInsee: string) =>
+    fetchJson<CommuneGeoResult>(
+      `${BASE}/geo/commune/${codeInsee}?geometry=true`
+    ),
+
+  getFinancesTab: (codeInsee: string, year = 2023) =>
+    communeData(codeInsee, "finances", year) as Promise<{
+      finances: CommuneFinances;
+      comparison: CommuneComparison;
+      score: unknown;
+      years: { years: number[]; latest: number };
+      scoreHistorique?: {
+        code_insee: string;
+        historique: Array<{
+          annee: number; score: number; note: string;
+          d1_solvabilite: number; d2_equilibre: number; d3_rigidite: number;
+          d4_investissement: number; d5_autonomie: number; d6_dynamique: number;
+        }>;
+      };
+    }>,
+
   getCommuneFinances: (codeInsee: string, year = 2023) =>
-    fetchJson<CommuneFinances>(`${BASE}/finances/commune/${codeInsee}?year=${year}`),
+    communeData(codeInsee, "finances", year).then(
+      (d) => (d as { finances: CommuneFinances }).finances
+    ),
 
   getCommuneComparison: (codeInsee: string, year = 2023) =>
-    fetchJson<CommuneComparison>(`${BASE}/finances/commune/${codeInsee}/comparison?year=${year}`),
+    communeData(codeInsee, "finances", year).then(
+      (d) => (d as { comparison: CommuneComparison }).comparison
+    ),
 
-  // Données comptables
+  getCommuneScore: (codeInsee: string, year = 2023) =>
+    communeData(codeInsee, "finances", year).then(
+      (d) => (d as { score: unknown }).score
+    ),
+
   getComptes: (codeInsee: string, year = 2023) =>
-    fetchJson<ComptesData>(`${BASE}/comptable/commune/${codeInsee}/comptes?year=${year}`),
+    communeData(codeInsee, "comptes", year) as Promise<ComptesData>,
 
   getFiscalite: (codeInsee: string, year = 2023) =>
-    fetchJson<FiscaliteData>(`${BASE}/comptable/commune/${codeInsee}/fiscalite?year=${year}`),
+    communeData(codeInsee, "fiscalite", year).then(
+      (d) => (d as { fiscalite: FiscaliteData }).fiscalite
+    ),
 
-  // Marchés publics
+  getPanel: (codeInsee: string, year = 2023) =>
+    fetchJson<{ finances: CommuneFinances; score: unknown; immobilier: ImmobilierData; maire: import("../types").Elu | null }>(
+      `${BASE}/commune/${codeInsee}?tab=panel&year=${year}`
+    ),
+
+  getEconomie: (codeInsee: string, yearMarches = 2023, yearFiscPro = 2022, marchesPage = 1, marchesLimit = 50) =>
+    fetchJson<EconomieData>(
+      `${BASE}/commune/${codeInsee}?tab=economie&year=${yearMarches}&yearFiscPro=${yearFiscPro}&marchesPage=${marchesPage}&marchesLimit=${marchesLimit}`
+    ),
+
   getMarches: (codeInsee: string, year = 2023) =>
-    fetchJson<MarchesData>(`${BASE}/marches/commune/${codeInsee}?year=${year}`),
+    communeData(codeInsee, "marches", year) as Promise<MarchesData>,
 
-  // Énergie
-  getEnergie: (codeInsee: string, year = 2022) =>
-    fetchJson<EnergieData>(`${BASE}/energie/commune/${codeInsee}?year=${year}`),
+  getEnergie: (codeInsee: string, _year?: number) =>
+    communeData(codeInsee, "energie") as Promise<EnergieData>,
 
-  // Territoire
   getTerritoire: (codeInsee: string) =>
-    fetchJson<TerritoireData>(`${BASE}/territoire/commune/${codeInsee}`),
+    communeData(codeInsee, "territoire") as Promise<TerritoireData>,
 
-  // Fiscalité pro
   getFiscalitePro: (codeInsee: string, year = 2022) =>
-    fetchJson<FiscaliteProData>(`${BASE}/fiscalite-pro/commune/${codeInsee}?year=${year}`),
+    communeData(codeInsee, "fiscalite", year).then(
+      (d) => (d as { fiscalitePro: FiscaliteProData }).fiscalitePro
+    ),
 
-  // Élus
   getElus: (codeInsee: string) =>
-    fetchJson<ElusData>(`${BASE}/elus/commune/${codeInsee}`),
+    communeData(codeInsee, "elus").then(
+      (d) => (d as { elus: ElusData }).elus
+    ),
 
   getHistoriqueElections: (codeInsee: string) =>
-    fetchJson<HistoriqueElections>(`${BASE}/elus/commune/${codeInsee}/historique`),
+    communeData(codeInsee, "elus").then(
+      (d) => (d as { historique: HistoriqueElections }).historique
+    ),
 
-  // Immobilier
   getImmobilier: (codeInsee: string, year = 2024) =>
-    fetchJson<ImmobilierData>(`${BASE}/immobilier/commune/${codeInsee}?year=${year}`),
+    communeData(codeInsee, "immobilier", year).then(
+      (d) => (d as { immobilier: ImmobilierData }).immobilier
+    ),
 
   getDvfEvolution: (codeInsee: string) =>
-    fetchJson<DvfEvolutionData>(`${BASE}/immobilier/commune/${codeInsee}/dvf/evolution`),
+    communeData(codeInsee, "immobilier").then(
+      (d) => (d as { dvfEvolution: DvfEvolutionData }).dvfEvolution
+    ),
 
-  getDvfTransactions: (codeInsee: string, year: number) =>
-    fetchJson<DvfTransactionsData>(`${BASE}/immobilier/commune/${codeInsee}/dvf/transactions?year=${year}`),
+  getDvfTransactions: (codeInsee: string, year: number, page = 1, pageSize = 25, sortBy = "date", sortDir = "desc") =>
+    fetchJson<unknown>(
+      `${BASE}/commune/${codeInsee}?tab=immobilier&year=${year}&page=${page}&txPageSize=${pageSize}&txSortBy=${sortBy}&txSortDir=${sortDir}`
+    ).then((d) => (d as { dvfTransactions: DvfTransactionsData }).dvfTransactions),
 
   getDvfMap: (codeInsee: string) =>
-    fetchJson<DvfMapData>(`${BASE}/immobilier/commune/${codeInsee}/dvf/map`),
+    communeData(codeInsee, "immobilier").then(
+      (d) => (d as { dvfMap: DvfMapData }).dvfMap
+    ),
 
-  // Eau
+  getDvfPoints: (codeInsee: string) =>
+    communeData(codeInsee, "immobilier").then(
+      (d) => (d as any).dvfPoints
+    ),
+
+  getDvfTransactionDetail: (idMutation: string) =>
+    fetchJson<any>(`${BASE}/immobilier/transaction/${idMutation}`),
+
   getEau: (codeInsee: string) =>
-    fetchJson<EauData>(`${BASE}/eau/commune/${codeInsee}`),
+    communeData(codeInsee, "eau").then((d: any) => d?.eau) as Promise<EauData>,
+  getEauMensuel: (codeInsee: string) =>
+    communeData(codeInsee, "eau").then((d: any) => d?.eauMensuel) as Promise<any>,
 
-  // Available years — fetches from national endpoint; falls back to static list
   getAvailableYears: () =>
     fetchJson<{ years: number[]; latest: number }>(`${BASE}/finances/available-years`)
       .catch(() => ({ years: [2020, 2021, 2022, 2023], latest: 2023 })),

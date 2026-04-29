@@ -1,3 +1,4 @@
+'use client';
 import { useEffect, useRef } from "react";
 import { MapContainer, TileLayer, ZoomControl, useMap } from "react-leaflet";
 import L from "leaflet";
@@ -8,9 +9,21 @@ import "leaflet/dist/leaflet.css";
 const DEPT_GEOJSON_URL =
   "https://raw.githubusercontent.com/gregoiredavid/france-geojson/master/departements-version-simplifiee.geojson";
 
+export interface CommuneMapInfo {
+  code: string;
+  nom: string;
+  population?: number;
+  departement_code?: string;
+  departement_nom?: string;
+  region_nom?: string;
+  rural?: boolean;
+  montagne?: boolean;
+  touristique?: boolean;
+}
+
 interface Props {
   selectedCode: string | null;
-  onSelectCommune: (code: string) => void;
+  onSelectCommune: (info: CommuneMapInfo) => void;
 }
 
 const FRANCE_BOUNDS = L.latLngBounds([41.2, -5.5], [51.3, 9.8]);
@@ -68,9 +81,10 @@ function MapLayers({ selectedCode, onSelectCommune }: Props) {
           renderer: canvasRenderer,
           style: (f) => communeStyle(f?.properties?.code_insee ?? "", selectedRef.current),
           onEachFeature(feature, fl) {
-            const code: string = feature.properties?.code_insee ?? "";
-            const nom: string  = feature.properties?.nom ?? "";
-            const pop: number | undefined = feature.properties?.population;
+            const p = feature.properties ?? {};
+            const code: string = p.code_insee ?? "";
+            const nom: string  = p.nom ?? "";
+            const pop: number | undefined = p.population;
 
             (fl as L.Path).on({
               mouseover(e) {
@@ -80,7 +94,19 @@ function MapLayers({ selectedCode, onSelectCommune }: Props) {
               mouseout(e) {
                 (e.target as L.Path).setStyle(communeStyle(code, selectedRef.current));
               },
-              click() { onSelectRef.current(code); },
+              click() {
+                onSelectRef.current({
+                  code,
+                  nom,
+                  population:       pop,
+                  departement_code: p.departement_code,
+                  departement_nom:  p.departement_nom,
+                  region_nom:       p.region_nom,
+                  rural:            p.rural,
+                  montagne:         p.montagne,
+                  touristique:      p.touristique,
+                });
+              },
             });
 
             fl.bindTooltip(
