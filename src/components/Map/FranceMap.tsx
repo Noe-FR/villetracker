@@ -117,7 +117,13 @@ function MapLayers({ selectedCode, onSelectCommune }: Props) {
         });
 
         communeLayerRef.current = layer;
-        if (map.getZoom() >= COMMUNE_ZOOM) layer.addTo(map);
+        if (map.getZoom() >= COMMUNE_ZOOM) {
+          layer.addTo(map);
+        } else {
+          // On mobile, fitBounds may zoom below COMMUNE_ZOOM due to small viewport;
+          // force zoom up so the zoomend handler adds the layer.
+          map.setZoom(COMMUNE_ZOOM);
+        }
       }).catch(() => {
         if (activeDeptRef.current === deptCode) activeDeptRef.current = null;
       });

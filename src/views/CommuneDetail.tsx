@@ -2584,8 +2584,10 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                                 style={{ left: `${Math.min(100, (eau.th_avg / 50) * 100)}%`, transform: "translateX(-50%) translateY(-50%)" }}
                               />
                             </div>
-                            <div className="flex justify-between text-[10px] text-slate-500 mt-1">
-                              <span>0°f</span><span>7</span><span>15</span><span>25</span><span>42</span><span>50+</span>
+                            <div className="relative h-3 mt-1">
+                              {([[0, "0°f"], [7, "7"], [15, "15"], [25, "25"], [42, "42"], [50, "50+"]] as [number, string][]).map(([v, label]) => (
+                                <span key={v} className="absolute text-[10px] text-slate-500 -translate-x-1/2" style={{ left: `${Math.min(100, (v / 50) * 100)}%` }}>{label}</span>
+                              ))}
                             </div>
                           </div>
                         </div>

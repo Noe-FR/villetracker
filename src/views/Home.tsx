@@ -59,8 +59,23 @@ export function HomeClient() {
 
   const handleSelect = (info: CommuneMapInfo) => setSelectedInfo(info);
 
+  const insetsGrid = (
+    <div className="grid grid-cols-3 gap-1.5">
+      {expandedId && <FranceMiniInset onClick={() => setExpandedId(null)} />}
+      {INSETS.filter((d) => d.id !== expandedId).map((d) => (
+        <DomTomInset
+          key={d.id}
+          def={d}
+          selectedCode={selectedCode}
+          onSelect={handleSelect}
+          onExpand={() => setExpandedId(d.id)}
+        />
+      ))}
+    </div>
+  );
+
   return (
-    <div className="h-screen w-screen flex flex-col bg-slate-100 overflow-hidden">
+    <div className="w-screen flex flex-col bg-slate-100 overflow-y-auto lg:h-screen lg:overflow-hidden">
       {/* Header */}
       <header className="shrink-0 z-[1001] flex items-center justify-between px-5 py-1.5 bg-white border-b border-slate-200 shadow-sm">
         <div className="flex items-center gap-3">
@@ -75,50 +90,48 @@ export function HomeClient() {
         <SearchBar onSelect={(code, nom) => setSelectedInfo({ code, nom })} />
       </header>
 
-      {/* Main — flex-1 so footer stays at bottom */}
-      <div className="flex-1 relative min-h-0">
-        {expandedDef ? (
-          <DomTomExpanded
-            def={expandedDef}
-            selectedCode={selectedCode}
-            onSelect={handleSelect}
-          />
-        ) : (
-          <FranceMap selectedCode={selectedCode} onSelectCommune={handleSelect} />
-        )}
+      {/* Map area + insets */}
+      <div className="relative lg:flex-1 lg:min-h-0">
+        {/* Map — fixed height on mobile, fills parent on desktop */}
+        <div className="h-[58vh] lg:h-full">
+          {expandedDef ? (
+            <DomTomExpanded
+              def={expandedDef}
+              selectedCode={selectedCode}
+              onSelect={handleSelect}
+            />
+          ) : (
+            <FranceMap selectedCode={selectedCode} onSelectCommune={handleSelect} />
+          )}
 
-        {/* DOM-TOM insets */}
-        <div className="absolute bottom-10 left-3 z-[1000]">
-          <div className="grid grid-cols-3 gap-1.5">
-            {expandedId && <FranceMiniInset onClick={() => setExpandedId(null)} />}
-            {INSETS.filter((d) => d.id !== expandedId).map((d) => (
-              <DomTomInset
-                key={d.id}
-                def={d}
-                selectedCode={selectedCode}
-                onSelect={handleSelect}
-                onExpand={() => setExpandedId(d.id)}
-              />
-            ))}
-          </div>
+          {!selectedCode && !expandedId && (
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[1000] pointer-events-none">
+              <div className="flex items-center gap-2 bg-white/90 backdrop-blur border border-slate-200 rounded-xl px-4 py-2 shadow text-sm text-slate-600">
+                <MapPin size={13} className="text-blue-500 shrink-0" />
+                Zoomez ou cliquez sur un <strong className="mx-0.5">département</strong> pour afficher ses communes
+              </div>
+            </div>
+          )}
+
+          {selectedInfo && (
+            <CommunePanel
+              codeInsee={selectedInfo.code}
+              initialInfo={selectedInfo}
+              onClose={() => setSelectedInfo(null)}
+            />
+          )}
         </div>
 
-        {!selectedCode && !expandedId && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[1000] pointer-events-none">
-            <div className="flex items-center gap-2 bg-white/90 backdrop-blur border border-slate-200 rounded-xl px-4 py-2 shadow text-sm text-slate-600">
-              <MapPin size={13} className="text-blue-500 shrink-0" />
-              Zoomez ou cliquez sur un <strong className="mx-0.5">département</strong> pour afficher ses communes
-            </div>
-          </div>
-        )}
+        {/* DOM-TOM insets — absolute over map on desktop */}
+        <div className="hidden lg:block absolute bottom-10 left-3 z-[1000]">
+          {insetsGrid}
+        </div>
+      </div>
 
-        {selectedInfo && (
-          <CommunePanel
-            codeInsee={selectedInfo.code}
-            initialInfo={selectedInfo}
-            onClose={() => setSelectedInfo(null)}
-          />
-        )}
+      {/* DOM-TOM insets — below map on mobile */}
+      <div className="lg:hidden p-3 bg-slate-100">
+        <p className="text-xs font-semibold text-slate-500 mb-2 px-0.5">DOM-TOM & Corse</p>
+        {insetsGrid}
       </div>
 
       <Footer />

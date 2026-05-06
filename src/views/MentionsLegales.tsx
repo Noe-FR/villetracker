@@ -132,8 +132,8 @@ export function MentionsLegales() {
               <li>
                 <span className="font-medium">Droits :</span> vous disposez d'un droit d'accès, de
                 rectification, d'effacement et d'opposition. Pour exercer ces droits, contactez{" "}
-                <a href="mailto:contact@TODO.fr" className="text-blue-600 hover:underline">
-                  contact@TODO.fr
+                <a href="mailto:contact@villetracker.fr" className="text-blue-600 hover:underline">
+                  contact@villetracker.fr
                 </a>.
               </li>
               <li>
@@ -166,7 +166,7 @@ export function MentionsLegales() {
         </section>
 
         <p className="text-xs text-slate-400 pt-4 border-t border-slate-200">
-          Dernière mise à jour : avril 2025
+          Dernière mise à jour : avril 2026
         </p>
       </main>
       <Footer />
