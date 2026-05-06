@@ -1,16 +1,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 const TRANCHE_LABELS: Record<string, string> = {
-  "1":  "Moins de 250 hab.",
-  "2":  "250 – 499 hab.",
-  "3":  "500 – 1 999 hab.",
-  "4":  "2 000 – 4 999 hab.",
-  "5":  "5 000 – 9 999 hab.",
-  "6":  "10 000 – 19 999 hab.",
-  "7":  "20 000 – 49 999 hab.",
-  "8":  "50 000 – 99 999 hab.",
-  "9":  "100 000 – 299 999 hab.",
-  "10": "300 000 hab. et plus",
+  "0":  "Moins de 100 hab.",
+  "1":  "100 – 499 hab.",
+  "2":  "500 – 999 hab.",
+  "3":  "1 000 – 1 999 hab.",
+  "4":  "2 000 – 3 499 hab.",
+  "5":  "3 500 – 4 999 hab.",
+  "6":  "5 000 – 9 999 hab.",
+  "7":  "10 000 – 19 999 hab.",
+  "8":  "20 000 – 49 999 hab.",
+  "9":  "50 000 – 99 999 hab.",
+  "10": "100 000 hab. et plus",
 };
 
 export function transformFinances(raw: any, geo: any) {
