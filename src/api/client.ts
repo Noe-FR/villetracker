@@ -166,4 +166,25 @@ export const api = {
   getAvailableYears: () =>
     fetchJson<{ years: number[]; latest: number }>(`${BASE}/finances/available-years`)
       .catch(() => ({ years: [2020, 2021, 2022, 2023], latest: 2023 })),
+
+  getNationalHub: () =>
+    fetchJson<any>(`${BASE}/national/hub`),
+
+  getNationalHubSub: (sub: string) =>
+    fetchJson<any>(`${BASE}/national/hub?sub=${sub}`),
+
+  getNationalPolitique: (sub: string) =>
+    fetchJson<any>(`${BASE}/national/politique?sub=${sub}`),
+
+  getNationalGraphiques: (bloc: string) =>
+    fetchJson<any>(`${BASE}/national/graphiques?bloc=${bloc}`),
+
+  getNationalCartes: (indicator: string, annee?: number) =>
+    fetchJson<any>(`${BASE}/national/cartes?indicator=${indicator}${annee ? `&annee=${annee}` : ""}`),
+
+  getNationalCartesIndicators: () =>
+    fetchJson<any>(`${BASE}/national/cartes`),
+
+  getNationalFun: () =>
+    fetchJson<any>(`${BASE}/national/fun`),
 };

@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from "react";
-import { MapPin, Maximize2 } from "lucide-react";
+import Link from "next/link";
+import { MapPin, Maximize2, BarChart2 } from "lucide-react";
 import L from "leaflet";
 import { FranceMap, communeStyle } from "../components/Map/FranceMap";
 import { CommunePanel } from "../components/Panel/CommunePanel";
@@ -87,7 +88,18 @@ export function HomeClient() {
             <p className="text-slate-500 text-xs">France métropolitaine & DOM-TOM</p>
           </div>
         </div>
-        <SearchBar onSelect={(code, nom) => setSelectedInfo({ code, nom })} />
+        <div className="flex items-center gap-3">
+          {/* Statistiques nationales — en cours de développement, masqué temporairement
+          <Link
+            href="/statistiques"
+            className="hidden sm:flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
+          >
+            <BarChart2 size={14} />
+            Statistiques nationales
+          </Link>
+          */}
+          <SearchBar onSelect={(code, nom) => setSelectedInfo({ code, nom })} />
+        </div>
       </header>
 
       {/* Map area + insets */}
@@ -159,7 +171,7 @@ function DomTomInset({
       dragging: false, scrollWheelZoom: false, doubleClickZoom: false,
       touchZoom: false, boxZoom: false, keyboard: false,
     });
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
       subdomains: "abcd", maxZoom: 19,
     }).addTo(map);
     map.setView(def.center, def.zoom);
@@ -224,7 +236,7 @@ function DomTomExpanded({
       dragging: true, scrollWheelZoom: true, doubleClickZoom: true, touchZoom: true,
     });
     map.zoomControl.setPosition("bottomright");
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
       attribution: '&copy; <a href="https://carto.com/attributions">CARTO</a>',
       subdomains: "abcd", maxZoom: 19,
     }).addTo(map);
@@ -334,7 +346,7 @@ function FranceMiniInset({ onClick }: { onClick: () => void }) {
       dragging: false, scrollWheelZoom: false, doubleClickZoom: false,
       touchZoom: false, boxZoom: false, keyboard: false,
     });
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
       subdomains: "abcd",
     }).addTo(map);
     map.setView([46.5, 2.3], 4);

@@ -226,7 +226,7 @@ const DvfSalesMap = forwardRef<DvfSalesMapHandle, { pointsData: { mode: string; 
       scrollWheelZoom: false,
       attributionControl: true,
     });
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
       attribution: '© <a href="https://www.openstreetmap.org/">OSM</a> © <a href="https://carto.com/">CARTO</a>',
       maxZoom: 19,
     }).addTo(map);
@@ -1211,6 +1211,18 @@ function ResultatsBarChart({
 
 // ── Conseil municipal ─────────────────────────────────────────────────────────
 
+function feminiserFonction(fonction: string, isFemme: boolean): string {
+  if (!isFemme) return fonction;
+  const f = fonction.trim();
+  // "Maire" reste invariable (titre officiel non genré, même pour une femme)
+  // "Adjoint" → "Adjointe" mais "au Maire" est conservé tel quel
+  if (/\bAdjoint\b/i.test(f))    return f.replace(/\bAdjoint\b/gi, "Adjointe");
+  if (/\bConseiller\b/i.test(f)) return f.replace(/\bConseiller\b/gi, "Conseillère");
+  if (/\bPrésident\b/i.test(f))  return f.replace(/\bPrésident\b/gi, "Présidente");
+  // Fallback : ajouter "e" seulement si la fonction ne finit pas déjà par "e"
+  return f.endsWith("e") ? f : f + "e";
+}
+
 function EluCard({
   elu,
   highlight = false,
@@ -1244,17 +1256,12 @@ function EluCard({
         <p className="font-semibold text-white text-sm truncate">
           {elu.prenom} {elu.nom}
         </p>
-        <p className="text-xs text-slate-400 truncate">{elu.fonction || "Conseiller"}{isFemme ? "e" : ""}</p>
+        <p className="text-xs text-slate-400 truncate">{feminiserFonction(elu.fonction || "Conseiller", isFemme)}</p>
         {elu.csp && (
           <p className="text-[10px] text-slate-500 truncate">{elu.csp}</p>
         )}
       </div>
 
-      {elu.date_mandat && (
-        <span className="shrink-0 text-[10px] text-slate-600 font-mono">
-          depuis {elu.date_mandat.slice(-4)}
-        </span>
-      )}
     </div>
   );
 }
