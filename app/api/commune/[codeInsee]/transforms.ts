@@ -271,6 +271,14 @@ export function transformTerritoire(raw: any) {
   return { code_insee: raw.code_insee ?? "", ges, mobilite };
 }
 
+// Maires historiques pour Paris/Lyon/Marseille — données import incomplet pour 2008/2014
+// (pas de pattern "avec X" dans libelle_liste, tete_liste = chef de secteur sans utilité)
+const PLM_WINNERS: Record<string, Record<number, string>> = {
+  "69123": { 2001: "Gérard Collomb",    2008: "Gérard Collomb",   2014: "Gérard Collomb"   },
+  "75056": { 2001: "Bertrand Delanoë",  2008: "Bertrand Delanoë", 2014: "Anne Hidalgo"      },
+  "13055": { 2001: "Jean-Claude Gaudin",2008: "Jean-Claude Gaudin",2014: "Jean-Claude Gaudin"},
+};
+
 export function transformHistorique(raw: any) {
   if (!raw) return { code_insee: "", disponible: false, elections: [] };
 
@@ -282,18 +290,60 @@ export function transformHistorique(raw: any) {
       : (tourRaw?.listes ?? []);
     const stats = Array.isArray(tourRaw) ? {} : tourRaw;
 
+    // Dédupliquer les listes par (no_panneau + libelle_liste) — nécessaire pour
+    // Paris/Lyon/Marseille où chaque secteur d'arrondissement génère une ligne
+    // distincte pour la même liste avec un tête de liste sectoriel différent.
+    // Clé composite pour éviter de fusionner deux listes différentes qui
+    // partageraient accidentellement le même no_panneau.
+    const dedupMap = new Map<string, any>();
+    for (const n of listes) {
+      const key = n.no_panneau != null && n.libelle_liste
+        ? `p${n.no_panneau}|${n.libelle_liste}`
+        : `${n.nuance ?? ""}|${n.libelle_liste ?? n.libelle_nuance ?? ""}`;
+
+      if (!dedupMap.has(key)) {
+        // Extraire le candidat citywide depuis "avec Prénom NOM" dans le libelle
+        // (format PLM : "Liste X avec Grégory DOUCET" → "Grégory DOUCET")
+        const avecMatch = (n.libelle_liste ?? "").match(
+          /\bavec\s+([A-ZÉÈÊËÀÂÙÛÎa-zéèêëàâùûî][A-Za-zéèêëàâùûî\-']+(?:\s+[A-Za-zéèêëàâùûî\-']+){0,2})\s*$/i
+        );
+        dedupMap.set(key, {
+          nuance:        n.nuance ?? "",
+          libelle:       n.libelle_nuance ?? n.libelle ?? "",
+          couleur:       n.couleur ?? "",
+          libelle_liste: n.libelle_liste ?? undefined,
+          nb_candidats:  n.nb_candidats ?? 0,
+          nb_voix:       n.nb_voix ?? undefined,
+          pct_voix:      n.pct_voix ?? null,
+          // PLM : préférer le candidat extrait du libelle ; sinon tete_liste sectoriel
+          tete_liste:    avecMatch ? avecMatch[1].trim() : (n.tete_liste ?? undefined),
+          sieges_cm:     n.sieges_cm ?? undefined,
+          _tete_from_avec: !!avecMatch,  // flag interne : vrai = nom citywide extrait du libellé
+        });
+      } else {
+        // Même liste, autre secteur → cumuler voix et sièges
+        const ex = dedupMap.get(key)!;
+        if (n.nb_voix   != null) ex.nb_voix   = (ex.nb_voix   ?? 0) + n.nb_voix;
+        if (n.sieges_cm != null) ex.sieges_cm = (ex.sieges_cm ?? 0) + n.sieges_cm;
+        // Si le nom vient d'un chef de secteur (pas "avec X"), on l'efface :
+        // c'est une ville PLM et le tete_liste est sectoriel, pas le candidat citywide
+        if (!ex._tete_from_avec) ex.tete_liste = undefined;
+      }
+    }
+
+    const mergedListes = [...dedupMap.values()].map(({ _tete_from_avec: _f, ...rest }) => rest);
+
+    // Recalculer pct_voix après fusion (les % sectoriels ne s'additionnent pas)
+    const exprimes = stats.exprimes
+      ?? mergedListes.reduce((s: number, l: any) => s + (l.nb_voix ?? 0), 0);
+    if (exprimes > 0) {
+      for (const l of mergedListes) {
+        if (l.nb_voix != null) l.pct_voix = Math.round(l.nb_voix / exprimes * 10000) / 100;
+      }
+    }
+
     return {
-      listes: listes.map((n: any) => ({
-        nuance:        n.nuance ?? "",
-        libelle:       n.libelle_nuance ?? n.libelle ?? "",
-        couleur:       n.couleur ?? "",
-        libelle_liste: n.libelle_liste ?? undefined,
-        nb_candidats:  n.nb_candidats ?? 0,
-        nb_voix:       n.nb_voix ?? undefined,
-        pct_voix:      n.pct_voix ?? null,
-        tete_liste:    n.tete_liste ?? undefined,
-        sieges_cm:     n.sieges_cm ?? undefined,
-      })),
+      listes:      mergedListes,
       inscrits:    stats.inscrits    ?? undefined,
       votants:     stats.votants     ?? undefined,
       abstentions: stats.abstentions ?? undefined,
@@ -309,9 +359,16 @@ export function transformHistorique(raw: any) {
     const t1 = t1Raw ? toTourData(t1Raw) : null;
     const t2 = t2Raw ? toTourData(t2Raw) : null;
     const nuancesMain = (t2?.listes.length ? t2.listes : t1?.listes) ?? [];
-    const nuance_gagnante = nuancesMain.length
+    let nuance_gagnante: any = nuancesMain.length
       ? nuancesMain.reduce((a: any, b: any) => ((a.pct_voix ?? 0) > (b.pct_voix ?? 0) ? a : b))
       : null;
+    // Override PLM : pour les années historiques des villes PLM (2001/2008/2014),
+    // les données sont incomplètes (pas de "avec X", ou tete_liste = chef de secteur).
+    // On injecte toujours le maire connu — sans condition sur tete_liste.
+    const plmFallback = PLM_WINNERS[raw.code_insee]?.[s.annee];
+    if (nuance_gagnante && plmFallback) {
+      nuance_gagnante = { ...nuance_gagnante, tete_liste: plmFallback };
+    }
     return {
       id_election:     s.id_election ?? "",
       annee:           s.annee ?? 0,
