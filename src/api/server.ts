@@ -115,4 +115,46 @@ export const serverApi = {
   getAvailableYears: () =>
     fetchJson<{ years: number[]; latest: number }>(`/finances/available-years`)
       .catch(() => ({ years: [2020, 2021, 2022, 2023], latest: 2023 })),
+
+  getNationalHub: () =>
+    fetchJson<any>(`/national/hub`),
+
+  getNationalHubAnniversaires: () =>
+    fetchJson<any>(`/national/hub/anniversaires`),
+
+  getNationalHubEvolutionFinances: () =>
+    fetchJson<any>(`/national/hub/evolution-finances`),
+
+  getNationalHubNotesDistribution: () =>
+    fetchJson<any>(`/national/hub/notes-distribution`),
+
+  getNationalPolitiqueResume: () =>
+    fetchJson<any>(`/national/politique/resume`),
+
+  getNationalPolitiqueStatsFamille: () =>
+    fetchJson<any>(`/national/politique/stats-famille`),
+
+  getNationalPolitiqueEvolution: () =>
+    fetchJson<any>(`/national/politique/evolution`),
+
+  getNationalPolitiqueFun: () =>
+    fetchJson<any>(`/national/politique/fun`),
+
+  getNationalPolitiqueRecords: () =>
+    fetchJson<any>(`/national/politique/records`),
+
+  getNationalPolitiqueElus: () =>
+    fetchJson<any>(`/national/politique/elus`),
+
+  getNationalCartesIndicators: () =>
+    fetchJson<any>(`/national/cartes/indicators`),
+
+  getNationalCartes: (indicator: string, annee?: number) =>
+    fetchJson<any>(`/national/cartes?indicator=${indicator}${annee ? `&annee=${annee}` : ""}`),
+
+  getNationalGraphiques: (bloc: string) =>
+    fetchJson<any>(`/national/graphiques/${bloc}`),
+
+  getNationalFun: () =>
+    fetchJson<any>(`/national/fun`),
 };
