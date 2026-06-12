@@ -56,7 +56,7 @@ import {
   DIM_ACCENT,
 } from "../utils/financialScore";
 
-type Tab = "finances" | "comparaison" | "energie" | "economie" | "comptable" | "conseil" | "immobilier";
+type Tab = "finances" | "comparaison" | "energie" | "economie" | "comptable" | "conseil" | "immobilier" | "demographie" | "services" | "insee_economie";
 
 // ── YoY helpers ───────────────────────────────────────────────────────────────
 
@@ -1398,6 +1398,24 @@ const MAX_ENERGIE    = 2022; // Agence ORE
 const MAX_FISCPRO    = 2022; // Fiscalité pro DGFiP
 const MAX_IMMO       = 2024; // DVF tabular
 
+function LoadingBlock({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-2 text-slate-400 py-8 justify-center">
+      <Loader2 size={20} className="animate-spin" />
+      {label}
+    </div>
+  );
+}
+
+function EmptyBlock({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-2 text-slate-500 bg-slate-900 border border-slate-800 rounded-xl p-5 text-sm">
+      <AlertCircle size={15} className="shrink-0 text-slate-600" />
+      {label}
+    </div>
+  );
+}
+
 function StaleDataBadge({ selected, effective }: { selected: number; effective: number }) {
   if (selected === effective) return null;
   return (
@@ -1408,13 +1426,16 @@ function StaleDataBadge({ selected, effective }: { selected: number; effective: 
 }
 
 const TABS: { id: Tab; label: string; icon: React.ElementType; metroOnly?: boolean }[] = [
-  { id: "finances",    label: "Finances",            icon: BarChart2,    metroOnly: true },
-  { id: "comparaison", label: "Comparaison",         icon: GitCompare,   metroOnly: true },
-  { id: "energie",    label: "Énergie & Territoire", icon: Zap,          metroOnly: true },
-  { id: "economie",   label: "Économie",             icon: ShoppingCart, metroOnly: true },
-  { id: "conseil",    label: "Conseil municipal",    icon: Users2 },
-  { id: "immobilier", label: "Immobilier",           icon: Building2,    metroOnly: true },
-  { id: "comptable",  label: "Grand livre",          icon: BookOpen,     metroOnly: true },
+  { id: "finances",       label: "Finances",            icon: BarChart2,    metroOnly: true },
+  { id: "comparaison",    label: "Comparaison",         icon: GitCompare,   metroOnly: true },
+  { id: "demographie",    label: "Démographie & Social", icon: Users,       metroOnly: true },
+  { id: "services",       label: "Services",            icon: ShieldCheck,  metroOnly: true },
+  { id: "insee_economie", label: "Économie locale",     icon: Building2,    metroOnly: true },
+  { id: "energie",        label: "Énergie & Territoire", icon: Zap,         metroOnly: true },
+  { id: "economie",       label: "Marchés publics",     icon: ShoppingCart, metroOnly: true },
+  { id: "conseil",        label: "Conseil municipal",   icon: Users2 },
+  { id: "immobilier",     label: "Immobilier",          icon: Building2,    metroOnly: true },
+  { id: "comptable",      label: "Grand livre",         icon: BookOpen,     metroOnly: true },
 ];
 
 // Collectivités d'outre-mer sans données OFGL (≠ DOM 971-974, 976 qui ont leurs finances)
@@ -1672,6 +1693,23 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
   );
   const dvfMapRef = useRef<DvfSalesMapHandle>(null);
   const [dvfPointsVisible, setDvfPointsVisible] = useState(true);
+
+  // ── INSEE — Démographie / Services / Économie ────────────────────────────
+  const { data: inseeDemoData, loading: loadingInseeDemo } = useApi(
+    () => tab === "demographie" ? api.getInseeDemographie(codeInsee!, year) : Promise.resolve(null as any),
+    [codeInsee, tab, year],
+    `insee_demo:${codeInsee}:${year}`
+  );
+  const { data: inseeServicesData, loading: loadingInseeServices } = useApi(
+    () => tab === "services" ? api.getInseeServices(codeInsee!, year) : Promise.resolve(null as any),
+    [codeInsee, tab, year],
+    `insee_services:${codeInsee}:${year}`
+  );
+  const { data: inseeEconData, loading: loadingInseeEcon } = useApi(
+    () => tab === "insee_economie" ? api.getInseeEconomie(codeInsee!) : Promise.resolve(null as any),
+    [codeInsee, tab],
+    `insee_econ:${codeInsee}`
+  );
 
   // Auto-select most recent election when historique loads
   useEffect(() => {
@@ -3348,6 +3386,403 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                       <ClasseAccordion key={classe.classe} classe={classe} />
                     ))}
                   </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Tab: Démographie & Social ─────────────────────────────────── */}
+            {tab === "demographie" && (
+              <div className="space-y-6">
+                {loadingInseeDemo && <LoadingBlock label="Chargement données démographiques…" />}
+
+                {/* Section Population */}
+                {!loadingInseeDemo && (inseeDemoData?.population?.historique?.length ?? 0) === 0 && (
+                  <EmptyBlock label="Données historiques non disponibles — lancez la collecte population_historique depuis l'admin." />
+                )}
+
+                {(inseeDemoData?.population?.historique?.length ?? 0) > 0 && (() => {
+                  const pop   = inseeDemoData!.population;
+                  const demo  = inseeDemoData?.demographie;
+                  const rev   = inseeDemoData?.revenus;
+                  const emp   = inseeDemoData?.emploi;
+                  const log   = inseeDemoData?.logement;
+
+                  // Millésime RP affiché (le plus proche de l'année sélectionnée)
+                  const rpAnnee = emp?.annee ?? demo?.annee ?? log?.annee ?? null;
+                  const rpStale = rpAnnee != null && rpAnnee !== year;
+
+                  return (
+                    <>
+                      {/* Bandeau millésime RP + badge données datées */}
+                      {rpAnnee != null && (
+                        <div className="flex items-center gap-2 text-xs text-slate-400">
+                          <span className="px-2 py-1 rounded-md bg-slate-800 border border-slate-700">
+                            Recensement INSEE — millésime {rpAnnee}
+                          </span>
+                          {rpStale && (
+                            <span className="flex items-center gap-1 text-amber-400">
+                              <AlertCircle size={12} />
+                              millésime le plus proche de {year} disponible
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* KPIs population */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <StatCard label="Population" value={formatNumber(pop.population ?? 0)} unit="hab" size="sm" />
+                        {pop.evol_10ans_pct != null && (
+                          <StatCard label="Évolution 10 ans" value={(pop.evol_10ans_pct > 0 ? "+" : "") + pop.evol_10ans_pct.toFixed(1)} unit="%" higherIsBetter size="sm" />
+                        )}
+                        {demo?.age_moyen != null && (
+                          <StatCard label="Âge moyen" value={demo.age_moyen.toFixed(1)} unit="ans" size="sm" />
+                        )}
+                        {demo?.indice_vieillissement != null && (
+                          <StatCard label="Indice vieillissement" value={demo.indice_vieillissement.toFixed(0)} unit="/100" size="sm" />
+                        )}
+                      </div>
+
+                      {/* Badges zonages */}
+                      {(pop.en_qpv || pop.en_zrr || pop.en_frr) && (
+                        <div className="flex gap-2 flex-wrap">
+                          {pop.en_qpv && <span className="px-3 py-1 rounded-full text-xs font-semibold bg-orange-900/40 text-orange-300 border border-orange-800">QPV — Quartier prioritaire politique de la ville</span>}
+                          {pop.en_zrr && <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-900/40 text-emerald-300 border border-emerald-800">ZRR — Zone de revitalisation rurale</span>}
+                          {pop.en_frr && <span className="px-3 py-1 rounded-full text-xs font-semibold bg-teal-900/40 text-teal-300 border border-teal-800">FRR — France Ruralités Revitalisation</span>}
+                        </div>
+                      )}
+
+                      {/* Courbe historique */}
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                        <h2 className="text-sm font-bold text-white mb-1">Évolution de la population</h2>
+                        <p className="text-xs text-slate-500 mb-4">Source : INSEE — séries historiques 1876→2023</p>
+                        <ResponsiveContainer width="100%" height={200}>
+                          <LineChart data={pop.historique}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                            <XAxis dataKey="annee" tick={{ fontSize: 11, fill: "#94a3b8" }} interval={9} />
+                            <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} tickFormatter={(v) => formatNumber(v)} width={70} />
+                            <Tooltip
+                              contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8 }}
+                              labelStyle={{ color: "#94a3b8", fontSize: 12 }}
+                              formatter={(v: any) => [formatNumber(v), "habitants"]}
+                            />
+                            <Line type="monotone" dataKey="population" stroke="#3b82f6" strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      {/* Pyramide des âges */}
+                      {demo?.tranches_age && Object.values(demo.tranches_age).some((v: any) => v != null) && (
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                          <h2 className="text-sm font-bold text-white mb-1">Répartition par tranche d'âge</h2>
+                          <p className="text-xs text-slate-500 mb-4">Source : INSEE Recensement de la Population {demo.annee}</p>
+                          <div className="space-y-2.5">
+                            {(Object.entries({
+                              "0–14 ans":  demo.tranches_age["0_14"],
+                              "15–29 ans": demo.tranches_age["15_29"],
+                              "30–44 ans": demo.tranches_age["30_44"],
+                              "45–59 ans": demo.tranches_age["45_59"],
+                              "60–74 ans": demo.tranches_age["60_74"],
+                              "75 ans +":  demo.tranches_age["75_plus"],
+                            }) as [string, number | null][]).map(([label, pct]) => pct != null && (
+                              <div key={label} className="flex items-center gap-3">
+                                <span className="text-xs text-slate-400 w-20 shrink-0">{label}</span>
+                                <div className="flex-1 bg-slate-800 rounded-full h-2.5">
+                                  <div className="bg-blue-500 h-2.5 rounded-full transition-all" style={{ width: `${Math.min(pct, 100)}%` }} />
+                                </div>
+                                <span className="text-xs font-mono text-slate-300 w-12 text-right">{pct?.toFixed(1)}%</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Revenus */}
+                      {rev && !rev.secret_statistique && rev.revenu_median != null && (
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                          <h2 className="text-sm font-bold text-white mb-1">Revenus des ménages</h2>
+                          <p className="text-xs text-slate-500 mb-4">Source : INSEE Filosofi {rev.annee} — revenu disponible par unité de consommation</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            <StatCard label="Revenu médian" value={formatEuro(rev.revenu_median)} unit="/UC/an" size="sm" />
+                            {rev.taux_pauvrete != null && <StatCard label="Taux de pauvreté" value={rev.taux_pauvrete?.toFixed(1)} unit="%" size="sm" />}
+                            {rev.revenu_q1 != null && <StatCard label="1er décile (D1)" value={formatEuro(rev.revenu_q1)} unit="/UC/an" size="sm" />}
+                          </div>
+
+                          {/* Évolution revenu médian sur les millésimes disponibles */}
+                          {Array.isArray(rev.historique) && rev.historique.filter((h: any) => h.revenu_median != null).length >= 2 && (
+                            <div className="mt-4">
+                              <h3 className="text-xs font-semibold text-slate-400 mb-2">Évolution du revenu médian</h3>
+                              <ResponsiveContainer width="100%" height={150}>
+                                <LineChart data={rev.historique.filter((h: any) => h.revenu_median != null)}>
+                                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                                  <XAxis dataKey="annee" tick={{ fontSize: 11, fill: "#94a3b8" }} />
+                                  <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} width={55} tickFormatter={(v) => `${(v/1000).toFixed(0)}k€`} />
+                                  <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8 }} labelStyle={{ color: "#94a3b8", fontSize: 12 }} formatter={(v: any) => [formatEuro(v), "médian/UC/an"]} />
+                                  <Line type="monotone" dataKey="revenu_median" stroke="#10b981" strokeWidth={2.5} dot={{ r: 3 }} />
+                                </LineChart>
+                              </ResponsiveContainer>
+                              <p className="text-[11px] text-slate-600 mt-1">Note : à partir de 2023, méthodologie Filosofi 2 (rupture de série avec les millésimes antérieurs).</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {rev?.secret_statistique && (
+                        <div className="flex items-center gap-2 bg-amber-900/20 border border-amber-800 rounded-xl p-4 text-xs text-amber-300">
+                          <AlertCircle size={14} />
+                          Secret statistique — données de revenus non publiées pour les communes de moins de 1 000 habitants (protection de l'anonymat).
+                        </div>
+                      )}
+                      {!rev && !loadingInseeDemo && (
+                        <EmptyBlock label="Revenus non disponibles — lancez la collecte revenus_filosofi." />
+                      )}
+
+                      {/* Emploi / CSP */}
+                      {emp && (
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                          <h2 className="text-sm font-bold text-white mb-1">Emploi et catégories socioprofessionnelles</h2>
+                          <p className="text-xs text-slate-500 mb-4">Source : INSEE Recensement de la Population {emp.annee}</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
+                            {emp.activite?.taux_activite != null && <StatCard label="Taux d'activité" value={emp.activite.taux_activite?.toFixed(1)} unit="%" size="sm" higherIsBetter />}
+                            {emp.activite?.taux_chomage != null && <StatCard label="Taux de chômage" value={emp.activite.taux_chomage?.toFixed(1)} unit="%" size="sm" />}
+                          </div>
+
+                          {/* Évolution chômage / cadres sur les millésimes disponibles */}
+                          {Array.isArray(emp.historique) && emp.historique.length >= 2 && (
+                            <div className="mb-5">
+                              <h3 className="text-xs font-semibold text-slate-400 mb-2">Évolution {emp.historique[0].annee}–{emp.historique[emp.historique.length-1].annee}</h3>
+                              <ResponsiveContainer width="100%" height={160}>
+                                <LineChart data={emp.historique}>
+                                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                                  <XAxis dataKey="annee" tick={{ fontSize: 11, fill: "#94a3b8" }} />
+                                  <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} width={35} unit="%" />
+                                  <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8 }} labelStyle={{ color: "#94a3b8", fontSize: 12 }} />
+                                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                                  <Line type="monotone" dataKey="taux_chomage" name="Chômage" stroke="#f97316" strokeWidth={2} dot={{ r: 3 }} />
+                                  <Line type="monotone" dataKey="pct_cadres" name="Cadres" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
+                                </LineChart>
+                              </ResponsiveContainer>
+                            </div>
+                          )}
+
+                          {emp.csp && (
+                            <div className="space-y-2">
+                              {(Object.entries({
+                                "Cadres & professions intellectuelles": emp.csp.cadres,
+                                "Professions intermédiaires": emp.csp.prof_intermediaires,
+                                "Employés":     emp.csp.employes,
+                                "Ouvriers":     emp.csp.ouvriers,
+                                "Artisans / Chefs d'entreprise": emp.csp.artisans,
+                                "Agriculteurs": emp.csp.agriculteurs,
+                              }) as [string, number | null][]).map(([label, pct]) => pct != null && pct > 0 && (
+                                <div key={label} className="flex items-center gap-3">
+                                  <span className="text-xs text-slate-400 w-48 shrink-0">{label}</span>
+                                  <div className="flex-1 bg-slate-800 rounded-full h-2">
+                                    <div className="bg-violet-500 h-2 rounded-full" style={{ width: `${Math.min(pct, 100)}%` }} />
+                                  </div>
+                                  <span className="text-xs font-mono text-slate-300 w-12 text-right">{pct?.toFixed(1)}%</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {emp.diplomes && (
+                            <div className="mt-5">
+                              <h3 className="text-xs font-semibold text-slate-400 mb-3">Niveau de diplôme (pop. 15 ans + non scolarisée)</h3>
+                              <div className="space-y-2">
+                                {(Object.entries({
+                                  "Sans diplôme":  emp.diplomes.sans_diplome,
+                                  "BEPC / Brevet": emp.diplomes.bepc_brevet,
+                                  "CAP / BEP":     emp.diplomes.cap_bep,
+                                  "Bac":           emp.diplomes.bac,
+                                  "Bac +2":        emp.diplomes.bac2,
+                                  "Bac +3 ou +":   emp.diplomes.bac3_plus,
+                                }) as [string, number | null][]).map(([label, pct]) => pct != null && (
+                                  <div key={label} className="flex items-center gap-3">
+                                    <span className="text-xs text-slate-400 w-24 shrink-0">{label}</span>
+                                    <div className="flex-1 bg-slate-800 rounded-full h-2">
+                                      <div className="bg-emerald-500 h-2 rounded-full" style={{ width: `${Math.min(pct, 100)}%` }} />
+                                    </div>
+                                    <span className="text-xs font-mono text-slate-300 w-12 text-right">{pct?.toFixed(1)}%</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {!emp && !loadingInseeDemo && (
+                        <EmptyBlock label="Données emploi non disponibles — lancez la collecte emploi_social_rp." />
+                      )}
+
+                      {/* Logement */}
+                      {log && (
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                          <h2 className="text-sm font-bold text-white mb-1">Logement</h2>
+                          <p className="text-xs text-slate-500 mb-4">Source : INSEE Recensement de la Population {log.annee}</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            {log.statut_occupation?.proprietaires != null && <StatCard label="Propriétaires" value={log.statut_occupation.proprietaires?.toFixed(1)} unit="%" size="sm" />}
+                            {log.statut_occupation?.locataires_priv != null && <StatCard label="Loc. privés" value={log.statut_occupation.locataires_priv?.toFixed(1)} unit="%" size="sm" />}
+                            {log.statut_occupation?.locataires_hlm != null && <StatCard label="HLM" value={log.statut_occupation.locataires_hlm?.toFixed(1)} unit="%" size="sm" />}
+                            {log.surface_moyenne != null && <StatCard label="Surface moyenne" value={log.surface_moyenne?.toFixed(0)} unit="m²" size="sm" />}
+                          </div>
+                        </div>
+                      )}
+                      {!log && !loadingInseeDemo && (
+                        <EmptyBlock label="Données logement non disponibles — lancez la collecte logement_rp." />
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* ── Tab: Services ─────────────────────────────────────────────── */}
+            {tab === "services" && (
+              <div className="space-y-6">
+                {loadingInseeServices && <LoadingBlock label="Chargement données services…" />}
+                {!loadingInseeServices && !inseeServicesData?.equip?.nb_types && (
+                  <EmptyBlock label="Données équipements non disponibles — lancez la collecte bpe_equipements depuis l'admin." />
+                )}
+
+                {/* Bandeau millésime BPE + badge données datées */}
+                {(inseeServicesData?.equip?.annee != null) && (
+                  <div className="flex items-center gap-2 text-xs text-slate-400">
+                    <span className="px-2 py-1 rounded-md bg-slate-800 border border-slate-700">
+                      Équipements INSEE — millésime {inseeServicesData.equip.annee}
+                    </span>
+                    {inseeServicesData.equip.annee !== year && (
+                      <span className="flex items-center gap-1 text-amber-400">
+                        <AlertCircle size={12} />
+                        millésime le plus proche de {year} disponible
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Équipements par catégorie — affichage amélioré avec contexte */}
+                {(inseeServicesData?.equip?.nb_types ?? 0) > 0 && (() => {
+                  const pop = inseeServicesData!.equip.population ?? 0;
+                  const CAT_META: Record<string, { icon: string; label: string }> = {
+                    sante:     { icon: "🏥", label: "Santé" },
+                    education: { icon: "📚", label: "Éducation" },
+                    commerce:  { icon: "🛒", label: "Commerces" },
+                    loisirs:   { icon: "🎭", label: "Loisirs & Sport" },
+                    services:  { icon: "🏛️", label: "Services publics" },
+                    social:    { icon: "👶", label: "Social & Petite enfance" },
+                    transports:{ icon: "🚉", label: "Transports" },
+                    tourisme:  { icon: "🏨", label: "Tourisme" },
+                  };
+                  const equips = inseeServicesData!.equip.equipements as Record<string, Array<{libelle: string; nb: number; nb_pour_10k: number | null}>>;
+
+                  return (
+                    <div className="space-y-4">
+                      {Object.entries(equips).map(([cat, catEquips]) => {
+                        const meta = CAT_META[cat] ?? { icon: "📦", label: cat };
+                        const total = catEquips.reduce((s, e) => s + e.nb, 0);
+                        return (
+                          <div key={cat} className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                            <div className="flex items-center justify-between mb-3">
+                              <h3 className="text-sm font-semibold text-white">
+                                {meta.icon} {meta.label}
+                              </h3>
+                              <span className="text-xs text-slate-500">{total} établissement{total > 1 ? "s" : ""}</span>
+                            </div>
+                            <div className="divide-y divide-slate-800">
+                              {catEquips
+                                .sort((a, b) => b.nb - a.nb)
+                                .map((e) => (
+                                <div key={e.libelle} className="flex items-center justify-between py-2">
+                                  <span className="text-sm text-slate-300">{e.libelle}</span>
+                                  <div className="flex items-center gap-4 shrink-0">
+                                    <span className="text-sm font-bold text-white tabular-nums">{e.nb}</span>
+                                    {e.nb_pour_10k != null && pop > 0 && (
+                                      <span className="text-xs text-slate-500 w-28 text-right">
+                                        {e.nb_pour_10k.toFixed(2)} / 10 000 hab
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <p className="text-xs text-slate-600 text-center pb-2">
+                        Source : INSEE Base Permanente des Équipements (BPE) {inseeServicesData!.equip.annee}
+                      </p>
+                    </div>
+                  );
+                })()}
+
+                {/* Tourisme */}
+                {inseeServicesData?.tourisme?.cap_totale_lits != null && (
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                    <h2 className="text-sm font-bold text-white mb-4">🏖️ Capacité d'hébergement touristique</h2>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      <StatCard label="Capacité totale" value={formatNumber(inseeServicesData.tourisme.cap_totale_lits)} unit="lits" size="sm" />
+                      {inseeServicesData.tourisme.nb_hotels != null && <StatCard label="Hôtels" value={String(inseeServicesData.tourisme.nb_hotels)} size="sm" />}
+                      {inseeServicesData.tourisme.lits_pour_100hab != null && <StatCard label="Lits / 100 hab" value={inseeServicesData.tourisme.lits_pour_100hab?.toFixed(1)} size="sm" />}
+                    </div>
+                    <p className="text-xs text-slate-500 mt-3">Source : INSEE · millésime {inseeServicesData.tourisme.annee}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Tab: Économie locale (SIRENE) ─────────────────────────────── */}
+            {tab === "insee_economie" && (
+              <div className="space-y-6">
+                {loadingInseeEcon && <LoadingBlock label="Chargement données économiques…" />}
+                {!loadingInseeEcon && !inseeEconData?.etablissements && (
+                  <EmptyBlock label="Données entreprises non disponibles — lancez la collecte sirene_etablissements." />
+                )}
+
+                {inseeEconData?.etablissements?.total_actifs != null && (
+                  <>
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                      <h2 className="text-sm font-bold text-white mb-2">Tissu économique (SIRENE {inseeEconData.etablissements.annee})</h2>
+                      <p className="text-xs text-slate-500 mb-4">{formatNumber(inseeEconData.etablissements.total_actifs)} établissements actifs</p>
+                      <div className="space-y-2">
+                        {(inseeEconData.etablissements.sections as Array<{section: string; libelle: string; nb_actifs: number; pct: number; creations_an: number}>)
+                          .filter((s) => s.nb_actifs > 0)
+                          .slice(0, 12)
+                          .map((s) => (
+                          <div key={s.section} className="flex items-center gap-3">
+                            <span className="text-xs font-mono text-slate-500 w-4 shrink-0">{s.section}</span>
+                            <span className="text-xs text-slate-400 flex-1 truncate">{s.libelle}</span>
+                            <div className="w-24 bg-slate-800 rounded-full h-1.5">
+                              <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${s.pct}%` }} />
+                            </div>
+                            <span className="text-xs font-mono text-slate-300 w-10 text-right">{s.nb_actifs}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Taille des établissements */}
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                      <h2 className="text-sm font-bold text-white mb-4">Taille des établissements</h2>
+                      {(() => {
+                        const secs = inseeEconData.etablissements.sections as Array<{nb_etab_0sal: number; nb_etab_1_9sal: number; nb_etab_10_49sal: number; nb_etab_50plus: number}>;
+                        const tot0  = secs.reduce((s, r) => s + (r.nb_etab_0sal || 0), 0);
+                        const tot19 = secs.reduce((s, r) => s + (r.nb_etab_1_9sal || 0), 0);
+                        const tot49 = secs.reduce((s, r) => s + (r.nb_etab_10_49sal || 0), 0);
+                        const tot50 = secs.reduce((s, r) => s + (r.nb_etab_50plus || 0), 0);
+                        const total = tot0 + tot19 + tot49 + tot50 || 1;
+                        return (
+                          <div className="space-y-2">
+                            {[["Sans salarié", tot0], ["1–9 salariés", tot19], ["10–49 salariés", tot49], ["50+ salariés", tot50]].map(([label, nb]) => (
+                              <div key={label as string} className="flex items-center gap-3">
+                                <span className="text-xs text-slate-400 w-32 shrink-0">{label}</span>
+                                <div className="flex-1 bg-slate-800 rounded-full h-2">
+                                  <div className="bg-indigo-500 h-2 rounded-full" style={{ width: `${(nb as number) / total * 100}%` }} />
+                                </div>
+                                <span className="text-xs font-mono text-slate-300 w-16 text-right">{formatNumber(nb as number)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </>
                 )}
               </div>
             )}

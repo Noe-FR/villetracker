@@ -144,6 +144,45 @@ export async function GET(
         };
         break;
       }
+      case "demographie": {
+        const [pop, demo, rev, emp, log] = await Promise.allSettled([
+          serverApi.getPopulation(codeInsee),
+          serverApi.getDemographie(codeInsee, year),
+          serverApi.getRevenus(codeInsee),
+          serverApi.getEmploiSocial(codeInsee, year),
+          serverApi.getLogement(codeInsee, year),
+        ]);
+        data = {
+          population:  pop.status  === "fulfilled" ? pop.value  : null,
+          demographie: demo.status === "fulfilled" ? demo.value : null,
+          revenus:     rev.status  === "fulfilled" ? rev.value  : null,
+          emploi:      emp.status  === "fulfilled" ? emp.value  : null,
+          logement:    log.status  === "fulfilled" ? log.value  : null,
+        };
+        break;
+      }
+      case "services": {
+        const [equip, tourisme] = await Promise.allSettled([
+          serverApi.getEquipements(codeInsee, year),
+          serverApi.getTourisme(codeInsee),
+        ]);
+        data = {
+          equip:    equip.status   === "fulfilled" ? equip.value   : null,
+          tourisme: tourisme.status === "fulfilled" ? tourisme.value : null,
+        };
+        break;
+      }
+      case "insee_economie": {
+        const [etab, emp] = await Promise.allSettled([
+          serverApi.getEtablissementsSirene(codeInsee),
+          serverApi.getEmploiSocial(codeInsee),
+        ]);
+        data = {
+          etablissements: etab.status === "fulfilled" ? etab.value : null,
+          emploi:         emp.status  === "fulfilled" ? emp.value  : null,
+        };
+        break;
+      }
       default:
         return NextResponse.json({ error: "tab inconnu" }, { status: 400 });
     }
