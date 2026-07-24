@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useImperativeHandle, forwardRef } from "react";
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -13,6 +13,7 @@ import {
   Loader2,
   AlertCircle,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Zap,
   Leaf,
@@ -42,7 +43,7 @@ import { api } from "../api/client";
 import { StatCard } from "../components/Panel/StatCard";
 import { higherIsBetter as hib } from "../utils/indicators";
 import { EvolutionChart } from "../components/Charts/EvolutionChart";
-import { AreaChart, Area, LineChart, Line, Legend, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import { AreaChart, Area, LineChart, Line, BarChart, Bar, Legend, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, RadarChart, Radar, PolarGrid, PolarAngleAxis, PieChart, Pie, Cell, LabelList } from "recharts";
 import { ComparisonChart } from "../components/Charts/ComparisonChart";
 import { Footer } from "../components/Footer";
 import { AgregatsChart } from "../components/Charts/AgregatsChart";
@@ -1519,13 +1520,45 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
   const effFiscPro = Math.min(year, MAX_FISCPRO);
   const effImmo    = Math.min(year, MAX_IMMO);
   const [tab, setTab] = useState<Tab>("finances");
+  const tabsNavRef = useRef<HTMLElement>(null);
+  const [canScrollLeft,  setCanScrollLeft]  = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
   const domTom = isLimitedTerritory(codeInsee ?? "");
+
+  const updateScrollState = () => {
+    const el = tabsNavRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  };
+
+  const scrollTabs = (dir: "left" | "right") => {
+    tabsNavRef.current?.scrollBy({ left: dir === "right" ? 160 : -160, behavior: "smooth" });
+  };
+
   // Rediriger vers conseil si territoire limité et onglet non disponible
   useEffect(() => {
     if (domTom && TABS.find(t => t.id === tab)?.metroOnly) {
       setTab("conseil");
     }
   }, [codeInsee, domTom]);
+  // Scroll l'onglet actif dans la zone visible
+  useEffect(() => {
+    if (!tabsNavRef.current) return;
+    const btn = tabsNavRef.current.querySelector<HTMLElement>(`[data-tab="${tab}"]`);
+    btn?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+  }, [tab]);
+  // Init + écoute du scroll pour afficher/cacher les flèches
+  useLayoutEffect(() => {
+    const el = tabsNavRef.current;
+    if (!el) return;
+    // rAF : on attend que le navigateur ait calculé les dimensions réelles
+    const raf = requestAnimationFrame(updateScrollState);
+    el.addEventListener("scroll", updateScrollState, { passive: true });
+    const ro = new ResizeObserver(updateScrollState);
+    ro.observe(el);
+    return () => { cancelAnimationFrame(raf); el.removeEventListener("scroll", updateScrollState); ro.disconnect(); };
+  }, [codeInsee]);
   const [chartMode, setChartMode] = useState<"eph" | "montant">("eph");
   const [selectedElectionId, setSelectedElectionId] = useState<string | null>(null);
   const scoreDetailRef = useRef<HTMLDivElement>(null);
@@ -1706,9 +1739,9 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
     `insee_services:${codeInsee}:${year}`
   );
   const { data: inseeEconData, loading: loadingInseeEcon } = useApi(
-    () => tab === "insee_economie" ? api.getInseeEconomie(codeInsee!) : Promise.resolve(null as any),
-    [codeInsee, tab],
-    `insee_econ:${codeInsee}`
+    () => tab === "insee_economie" ? api.getInseeEconomie(codeInsee!, year) : Promise.resolve(null as any),
+    [codeInsee, tab, year],
+    `insee_econ:${codeInsee}:${year}`
   );
 
   // Auto-select most recent election when historique loads
@@ -1932,24 +1965,48 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
             )}
 
             {/* ── Tabs ─────────────────────────────────────────────────── */}
-            <div className="border-b border-slate-800">
-              <nav className="flex gap-0.5 overflow-x-auto">
+            <div className="relative flex items-center border-b border-slate-800/60">
+              {/* Flèche gauche */}
+              {canScrollLeft && (
+                <button
+                  onClick={() => scrollTabs("left")}
+                  className="flex-shrink-0 flex items-center justify-center w-7 h-full pl-1 bg-gradient-to-r from-slate-900 via-slate-900 to-transparent absolute left-0 top-0 bottom-0 z-10 text-slate-400 hover:text-white transition-colors"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+              )}
+              {/* Flèche droite */}
+              {canScrollRight && (
+                <button
+                  onClick={() => scrollTabs("right")}
+                  className="flex-shrink-0 flex items-center justify-center w-7 h-full pr-1 bg-gradient-to-l from-slate-900 via-slate-900 to-transparent absolute right-0 top-0 bottom-0 z-10 text-slate-400 hover:text-white transition-colors"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              )}
+              <nav
+                ref={tabsNavRef}
+                className="flex gap-1 overflow-x-auto px-3 py-2 [&::-webkit-scrollbar]:hidden w-full"
+                style={{ scrollbarWidth: "none" }}
+              >
                 {TABS.map(({ id, label, icon: Icon, metroOnly }) => {
                   const disabled = domTom && metroOnly;
+                  const active = tab === id;
                   return (
                     <button
                       key={id}
+                      data-tab={id}
                       onClick={() => !disabled && setTab(id)}
                       disabled={disabled}
-                      className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all duration-150 flex-shrink-0 ${
                         disabled
-                          ? "border-transparent text-slate-600 cursor-not-allowed"
-                          : tab === id
-                            ? "border-blue-500 text-blue-400"
-                            : "border-transparent text-slate-400 hover:text-white"
+                          ? "text-slate-600 cursor-not-allowed"
+                          : active
+                            ? "bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/25"
+                            : "text-slate-400 hover:text-slate-100 hover:bg-slate-800"
                       }`}
                     >
-                      <Icon size={14} />
+                      <Icon size={13} className="flex-shrink-0" />
                       {label}
                     </button>
                   );
@@ -3636,75 +3693,124 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
 
             {/* ── Tab: Services ─────────────────────────────────────────────── */}
             {tab === "services" && (
-              <div className="space-y-6">
+              <div className="space-y-5">
                 {loadingInseeServices && <LoadingBlock label="Chargement données services…" />}
                 {!loadingInseeServices && !inseeServicesData?.equip?.nb_types && (
                   <EmptyBlock label="Données équipements non disponibles — lancez la collecte bpe_equipements depuis l'admin." />
                 )}
 
-                {/* Bandeau millésime BPE + badge données datées */}
-                {(inseeServicesData?.equip?.annee != null) && (
-                  <div className="flex items-center gap-2 text-xs text-slate-400">
+                {inseeServicesData?.equip?.annee != null && (
+                  <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap">
                     <span className="px-2 py-1 rounded-md bg-slate-800 border border-slate-700">
                       Équipements INSEE — millésime {inseeServicesData.equip.annee}
                     </span>
                     {inseeServicesData.equip.annee !== year && (
                       <span className="flex items-center gap-1 text-amber-400">
                         <AlertCircle size={12} />
-                        millésime le plus proche de {year} disponible
+                        millésime le plus proche de {year}
+                      </span>
+                    )}
+                    {(inseeServicesData.equip.annees_disponibles as number[])?.length <= 1 && (
+                      <span className="flex items-center gap-1 text-slate-500">
+                        <AlertCircle size={12} />
+                        historique non disponible — données {inseeServicesData.equip.annee} uniquement
                       </span>
                     )}
                   </div>
                 )}
 
-                {/* Équipements par catégorie — affichage amélioré avec contexte */}
                 {(inseeServicesData?.equip?.nb_types ?? 0) > 0 && (() => {
-                  const pop = inseeServicesData!.equip.population ?? 0;
-                  const CAT_META: Record<string, { icon: string; label: string }> = {
-                    sante:     { icon: "🏥", label: "Santé" },
-                    education: { icon: "📚", label: "Éducation" },
-                    commerce:  { icon: "🛒", label: "Commerces" },
-                    loisirs:   { icon: "🎭", label: "Loisirs & Sport" },
-                    services:  { icon: "🏛️", label: "Services publics" },
-                    social:    { icon: "👶", label: "Social & Petite enfance" },
-                    transports:{ icon: "🚉", label: "Transports" },
-                    tourisme:  { icon: "🏨", label: "Tourisme" },
+                  const CAT_META: Record<string, { icon: string; label: string; short: string }> = {
+                    sante:     { icon: "🏥", label: "Santé",              short: "Santé"      },
+                    education: { icon: "📚", label: "Éducation",          short: "Éduc."      },
+                    commerce:  { icon: "🛒", label: "Commerces",          short: "Commerce"   },
+                    loisirs:   { icon: "🎭", label: "Loisirs & Sport",    short: "Loisirs"    },
+                    services:  { icon: "🏛️", label: "Services publics",   short: "Services"   },
+                    social:    { icon: "👶", label: "Social",             short: "Social"     },
+                    transports:{ icon: "🚉", label: "Transports",         short: "Transports" },
+                    tourisme:  { icon: "🏨", label: "Tourisme",           short: "Tourisme"   },
                   };
                   const equips = inseeServicesData!.equip.equipements as Record<string, Array<{libelle: string; nb: number; nb_pour_10k: number | null}>>;
 
+                  const radarData = Object.entries(equips).map(([cat, items]) => {
+                    const meta = CAT_META[cat] ?? { short: cat };
+                    const val = items.filter(e => e.nb_pour_10k != null).reduce((s, e) => s + (e.nb_pour_10k ?? 0), 0);
+                    return { subject: meta.short, value: Math.round(val * 10) / 10, total: items.reduce((s, e) => s + e.nb, 0), cat };
+                  }).filter(d => d.total > 0);
+
                   return (
-                    <div className="space-y-4">
-                      {Object.entries(equips).map(([cat, catEquips]) => {
-                        const meta = CAT_META[cat] ?? { icon: "📦", label: cat };
-                        const total = catEquips.reduce((s, e) => s + e.nb, 0);
-                        return (
-                          <div key={cat} className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                            <div className="flex items-center justify-between mb-3">
-                              <h3 className="text-sm font-semibold text-white">
-                                {meta.icon} {meta.label}
-                              </h3>
-                              <span className="text-xs text-slate-500">{total} établissement{total > 1 ? "s" : ""}</span>
-                            </div>
-                            <div className="divide-y divide-slate-800">
-                              {catEquips
-                                .sort((a, b) => b.nb - a.nb)
-                                .map((e) => (
-                                <div key={e.libelle} className="flex items-center justify-between py-2">
-                                  <span className="text-sm text-slate-300">{e.libelle}</span>
-                                  <div className="flex items-center gap-4 shrink-0">
-                                    <span className="text-sm font-bold text-white tabular-nums">{e.nb}</span>
-                                    {e.nb_pour_10k != null && pop > 0 && (
-                                      <span className="text-xs text-slate-500 w-28 text-right">
-                                        {e.nb_pour_10k.toFixed(2)} / 10 000 hab
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
+                    <div className="space-y-5">
+                      {/* Radar profil */}
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                        <h3 className="text-sm font-semibold text-white mb-0.5">Profil d'équipement</h3>
+                        <p className="text-xs text-slate-500 mb-4">Densité par catégorie — équipements pour 10 000 habitants</p>
+                        <div className="flex gap-2 items-center">
+                          <div className="flex-1 min-w-0">
+                            <ResponsiveContainer width="100%" height={220}>
+                              <RadarChart data={radarData} margin={{ top: 8, right: 20, bottom: 8, left: 20 }}>
+                                <PolarGrid stroke="#1e293b" />
+                                <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                                <Radar dataKey="value" fill="#3b82f6" fillOpacity={0.2} stroke="#3b82f6" strokeWidth={2} dot={{ fill: '#3b82f6', r: 3 }} />
+                                <Tooltip
+                                  contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, fontSize: 11, color: '#f1f5f9' }}
+                                  formatter={(v: any, _: any, p: any) => [`${v} / 10k hab — ${p.payload.total} établ.`, '']}
+                                />
+                              </RadarChart>
+                            </ResponsiveContainer>
                           </div>
-                        );
-                      })}
+                          <div className="hidden sm:flex flex-col gap-2 shrink-0 w-32">
+                            {radarData.map(d => {
+                              const meta = CAT_META[d.cat] ?? { icon: "📦", short: d.cat };
+                              return (
+                                <div key={d.cat} className="flex items-center justify-between">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-sm">{meta.icon}</span>
+                                    <span className="text-xs text-slate-400">{meta.short}</span>
+                                  </div>
+                                  <span className="text-xs font-mono text-slate-300">{d.total}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Détail par catégorie — chips */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {Object.entries(equips).map(([cat, items]) => {
+                          const meta = CAT_META[cat] ?? { icon: "📦", label: cat };
+                          const sorted = [...items].sort((a, b) => b.nb - a.nb);
+                          const total = items.reduce((s, e) => s + e.nb, 0);
+                          const densiteTotal = items.filter(e => e.nb_pour_10k != null).reduce((s, e) => s + (e.nb_pour_10k ?? 0), 0);
+                          return (
+                            <div key={cat} className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-base">{meta.icon}</span>
+                                  <span className="text-sm font-semibold text-white">{meta.label}</span>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-sm font-bold text-white">{total}</div>
+                                  {densiteTotal > 0 && <div className="text-xs text-slate-500">{densiteTotal.toFixed(1)}/10k</div>}
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {sorted.map(e => (
+                                  <span
+                                    key={e.libelle}
+                                    title={e.nb_pour_10k != null ? `${e.nb_pour_10k.toFixed(2)} / 10 000 hab` : undefined}
+                                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-xs text-slate-300"
+                                  >
+                                    {e.libelle}
+                                    <span className="font-bold text-white">{e.nb}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
                       <p className="text-xs text-slate-600 text-center pb-2">
                         Source : INSEE Base Permanente des Équipements (BPE) {inseeServicesData!.equip.annee}
                       </p>
@@ -3712,10 +3818,9 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                   );
                 })()}
 
-                {/* Tourisme */}
                 {inseeServicesData?.tourisme?.cap_totale_lits != null && (
-                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-                    <h2 className="text-sm font-bold text-white mb-4">🏖️ Capacité d'hébergement touristique</h2>
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                    <h3 className="text-sm font-semibold text-white mb-4">🏖️ Capacité d'hébergement touristique</h3>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                       <StatCard label="Capacité totale" value={formatNumber(inseeServicesData.tourisme.cap_totale_lits)} unit="lits" size="sm" />
                       {inseeServicesData.tourisme.nb_hotels != null && <StatCard label="Hôtels" value={String(inseeServicesData.tourisme.nb_hotels)} size="sm" />}
@@ -3727,62 +3832,393 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
               </div>
             )}
 
-            {/* ── Tab: Économie locale (SIRENE) ─────────────────────────────── */}
+            {/* ── Tab: Économie locale ──────────────────────────────────────── */}
             {tab === "insee_economie" && (
-              <div className="space-y-6">
+              <div className="space-y-5">
                 {loadingInseeEcon && <LoadingBlock label="Chargement données économiques…" />}
-                {!loadingInseeEcon && !inseeEconData?.etablissements && (
-                  <EmptyBlock label="Données entreprises non disponibles — lancez la collecte sirene_etablissements." />
-                )}
 
-                {inseeEconData?.etablissements?.total_actifs != null && (
-                  <>
-                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-                      <h2 className="text-sm font-bold text-white mb-2">Tissu économique (SIRENE {inseeEconData.etablissements.annee})</h2>
-                      <p className="text-xs text-slate-500 mb-4">{formatNumber(inseeEconData.etablissements.total_actifs)} établissements actifs</p>
-                      <div className="space-y-2">
-                        {(inseeEconData.etablissements.sections as Array<{section: string; libelle: string; nb_actifs: number; pct: number; creations_an: number}>)
-                          .filter((s) => s.nb_actifs > 0)
-                          .slice(0, 12)
-                          .map((s) => (
-                          <div key={s.section} className="flex items-center gap-3">
-                            <span className="text-xs font-mono text-slate-500 w-4 shrink-0">{s.section}</span>
-                            <span className="text-xs text-slate-400 flex-1 truncate">{s.libelle}</span>
-                            <div className="w-24 bg-slate-800 rounded-full h-1.5">
-                              <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${s.pct}%` }} />
-                            </div>
-                            <span className="text-xs font-mono text-slate-300 w-10 text-right">{s.nb_actifs}</span>
-                          </div>
-                        ))}
+                {/* ── Marché du travail (RP emploi) ── */}
+                {(() => {
+                  const emp = inseeEconData?.emploi;
+                  if (!emp || emp.data === null) return null;
+
+                  const act = emp.activite ?? {};
+                  const csp = emp.csp ?? {};
+                  const gen = emp.genre ?? {};
+                  const inact = emp.inactivite ?? {};
+                  const empType = emp.emploi_type ?? {};
+                  const sects = emp.emploi_secteurs ?? {};
+
+                  // Répartition pop 15-64 pour graphique stacked
+                  const popTotal = (act.nb_actifs_occupes ?? 0) + (act.nb_chomeurs ?? 0) + (act.nb_inactifs ?? 0) || 1;
+                  const popParts = [
+                    { name: "Actifs occupés", value: act.nb_actifs_occupes ?? 0, fill: "#3b82f6" },
+                    { name: "Chômeurs",        value: act.nb_chomeurs ?? 0,       fill: "#f97316" },
+                    { name: "Inactifs",         value: act.nb_inactifs ?? 0,       fill: "#475569" },
+                  ];
+
+                  // Historique chômage/activité
+                  const hist = (emp.historique ?? []) as any[];
+
+                  // CSP barres horizontales
+                  const cspData = [
+                    { name: "Cadres",             pct: csp.cadres ?? 0 },
+                    { name: "Prof. interméd.",    pct: csp.prof_intermediaires ?? 0 },
+                    { name: "Employés",           pct: csp.employes ?? 0 },
+                    { name: "Ouvriers",           pct: csp.ouvriers ?? 0 },
+                    { name: "Artisans / chefs",   pct: csp.artisans ?? 0 },
+                    { name: "Agriculteurs",       pct: csp.agriculteurs ?? 0 },
+                  ].filter(d => (d.pct ?? 0) > 0).sort((a, b) => b.pct - a.pct);
+
+                  // Emploi par grand secteur (pie)
+                  const SECT_COLORS: Record<string, string> = {
+                    agriculture: "#84cc16", industrie: "#f59e0b",
+                    construction: "#f97316", commerce_services: "#3b82f6",
+                    public_edu_sante: "#8b5cf6",
+                  };
+                  const SECT_LABELS: Record<string, string> = {
+                    agriculture: "Agriculture", industrie: "Industrie",
+                    construction: "Construction", commerce_services: "Commerce & services",
+                    public_edu_sante: "Public, éducation, santé",
+                  };
+                  const sectData = Object.entries(sects)
+                    .map(([k, v]: any) => ({ name: SECT_LABELS[k] ?? k, value: v.nb ?? 0, pct: v.pct ?? 0, fill: SECT_COLORS[k] ?? "#64748b" }))
+                    .filter(d => d.value > 0)
+                    .sort((a, b) => b.value - a.value);
+
+                  // Genre
+                  const genreData = [
+                    { name: "Hommes", actifs: gen.h_nb_actifs ?? 0, taux: gen.h_taux_activite ?? 0, fill: "#3b82f6" },
+                    { name: "Femmes", actifs: gen.f_nb_actifs ?? 0, taux: gen.f_taux_activite ?? 0, fill: "#ec4899" },
+                  ];
+
+                  const TT = { contentStyle: { background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 11 }, labelStyle: { color: "#94a3b8", fontSize: 11 } };
+
+                  return (
+                    <>
+                      {/* Badge millésime */}
+                      <div className="flex items-center gap-2 text-xs text-slate-400">
+                        <span className="px-2 py-1 rounded-md bg-slate-800 border border-slate-700">
+                          Recensement de la Population — {emp.annee}
+                        </span>
+                        {emp.annee !== emp.annee_demandee && emp.annee_demandee != null && (
+                          <span className="flex items-center gap-1 text-amber-400">
+                            <AlertCircle size={12} />
+                            plus proche de {emp.annee_demandee}
+                          </span>
+                        )}
                       </div>
-                    </div>
 
-                    {/* Taille des établissements */}
-                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-                      <h2 className="text-sm font-bold text-white mb-4">Taille des établissements</h2>
-                      {(() => {
-                        const secs = inseeEconData.etablissements.sections as Array<{nb_etab_0sal: number; nb_etab_1_9sal: number; nb_etab_10_49sal: number; nb_etab_50plus: number}>;
-                        const tot0  = secs.reduce((s, r) => s + (r.nb_etab_0sal || 0), 0);
-                        const tot19 = secs.reduce((s, r) => s + (r.nb_etab_1_9sal || 0), 0);
-                        const tot49 = secs.reduce((s, r) => s + (r.nb_etab_10_49sal || 0), 0);
-                        const tot50 = secs.reduce((s, r) => s + (r.nb_etab_50plus || 0), 0);
-                        const total = tot0 + tot19 + tot49 + tot50 || 1;
-                        return (
-                          <div className="space-y-2">
-                            {[["Sans salarié", tot0], ["1–9 salariés", tot19], ["10–49 salariés", tot49], ["50+ salariés", tot50]].map(([label, nb]) => (
-                              <div key={label as string} className="flex items-center gap-3">
-                                <span className="text-xs text-slate-400 w-32 shrink-0">{label}</span>
-                                <div className="flex-1 bg-slate-800 rounded-full h-2">
-                                  <div className="bg-indigo-500 h-2 rounded-full" style={{ width: `${(nb as number) / total * 100}%` }} />
+                      {/* KPIs marché du travail */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        {act.taux_activite    != null && <StatCard label="Taux d'activité"      value={act.taux_activite.toFixed(1)}    unit="%" size="sm" higherIsBetter />}
+                        {act.taux_chomage     != null && <StatCard label="Taux de chômage"      value={act.taux_chomage.toFixed(1)}     unit="%" size="sm" />}
+                        {act.taux_chomage_15_24 != null && <StatCard label="Chômage 15–24 ans"  value={act.taux_chomage_15_24.toFixed(1)} unit="%" size="sm" />}
+                        {empType.pct_salaries != null && <StatCard label="Part salariés"        value={empType.pct_salaries.toFixed(1)} unit="%" size="sm" higherIsBetter />}
+                      </div>
+
+                      {/* Évolution + Répartition pop 15-64 */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {hist.length >= 2 && (
+                          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                            <h3 className="text-sm font-semibold text-white mb-0.5">Évolution du marché du travail</h3>
+                            <p className="text-xs text-slate-500 mb-4">Taux de chômage et d'activité — 15–64 ans</p>
+                            <ResponsiveContainer width="100%" height={170}>
+                              <LineChart data={hist} margin={{ left: -10, right: 8 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                                <XAxis dataKey="annee" tick={{ fontSize: 11, fill: "#94a3b8" }} />
+                                <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} unit="%" width={38} />
+                                <Tooltip {...TT} />
+                                <Legend wrapperStyle={{ fontSize: 11 }} />
+                                <Line type="monotone" dataKey="taux_activite" name="Activité" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
+                                <Line type="monotone" dataKey="taux_chomage"  name="Chômage"  stroke="#f97316" strokeWidth={2} dot={{ r: 3 }} />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
+
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                          <h3 className="text-sm font-semibold text-white mb-0.5">Population 15–64 ans</h3>
+                          <p className="text-xs text-slate-500 mb-4">Répartition actifs occupés / chômeurs / inactifs · {emp.annee}</p>
+                          <ResponsiveContainer width="100%" height={170}>
+                            <PieChart>
+                              <Pie data={popParts} cx="50%" cy="50%" innerRadius={48} outerRadius={75} dataKey="value" strokeWidth={2} stroke="#0f172a">
+                                {popParts.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                              </Pie>
+                              <Tooltip {...TT} formatter={(v: any) => formatNumber(v)} />
+                              <Legend wrapperStyle={{ fontSize: 11 }} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+
+                      {/* CSP + Genre */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {cspData.length > 0 && (
+                          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                            <h3 className="text-sm font-semibold text-white mb-0.5">Catégories socioprofessionnelles</h3>
+                            <p className="text-xs text-slate-500 mb-4">Part des actifs 15–64 ans · {emp.annee}</p>
+                            <ResponsiveContainer width="100%" height={170}>
+                              <BarChart data={cspData} layout="vertical" margin={{ left: 0, right: 30 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
+                                <XAxis type="number" tick={{ fontSize: 10, fill: "#94a3b8" }} unit="%" domain={[0, 'auto']} />
+                                <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: "#94a3b8" }} width={110} />
+                                <Tooltip {...TT} formatter={(v: any) => `${(v as number).toFixed(1)}%`} />
+                                <Bar dataKey="pct" fill="#8b5cf6" radius={[0, 3, 3, 0]}>
+                                  <LabelList dataKey="pct" position="right" formatter={(v: any) => `${(v as number).toFixed(1)}%`} style={{ fontSize: 10, fill: "#94a3b8" }} />
+                                </Bar>
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
+
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                          <h3 className="text-sm font-semibold text-white mb-0.5">Activité par genre</h3>
+                          <p className="text-xs text-slate-500 mb-4">Taux d'activité hommes / femmes · {emp.annee}</p>
+                          <ResponsiveContainer width="100%" height={100}>
+                            <BarChart data={genreData} margin={{ left: 8, right: 8 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                              <XAxis dataKey="name" tick={{ fontSize: 12, fill: "#94a3b8" }} />
+                              <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} unit="%" domain={[0, 100]} width={38} />
+                              <Tooltip {...TT} formatter={(v: any) => `${(v as number).toFixed(1)}%`} />
+                              <Bar dataKey="taux" name="Taux d'activité" radius={[4, 4, 0, 0]}>
+                                {genreData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                                <LabelList dataKey="taux" position="top" formatter={(v: any) => `${(v as number).toFixed(1)}%`} style={{ fontSize: 11, fill: "#e2e8f0" }} />
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                          <div className="mt-4 grid grid-cols-2 gap-3">
+                            <div className="text-center">
+                              <p className="text-[11px] text-slate-500">Hommes actifs</p>
+                              <p className="text-sm font-semibold text-blue-400">{formatNumber(gen.h_nb_actifs ?? 0)}</p>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-[11px] text-slate-500">Femmes actives</p>
+                              <p className="text-sm font-semibold text-pink-400">{formatNumber(gen.f_nb_actifs ?? 0)}</p>
+                            </div>
+                          </div>
+                          {(inact.pct_retraites != null || inact.pct_etudiants != null) && (
+                            <div className="mt-4 pt-4 border-t border-slate-800">
+                              <p className="text-[11px] text-slate-500 mb-2">Inactifs — répartition</p>
+                              <div className="space-y-1.5">
+                                {inact.pct_retraites != null && (
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-slate-400 w-20">Retraités</span>
+                                    <div className="flex-1 bg-slate-800 rounded-full h-1.5">
+                                      <div className="bg-amber-500 h-1.5 rounded-full" style={{ width: `${inact.pct_retraites}%` }} />
+                                    </div>
+                                    <span className="text-xs text-slate-300 w-10 text-right">{inact.pct_retraites?.toFixed(0)}%</span>
+                                  </div>
+                                )}
+                                {inact.pct_etudiants != null && (
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-slate-400 w-20">Étudiants</span>
+                                    <div className="flex-1 bg-slate-800 rounded-full h-1.5">
+                                      <div className="bg-cyan-500 h-1.5 rounded-full" style={{ width: `${inact.pct_etudiants}%` }} />
+                                    </div>
+                                    <span className="text-xs text-slate-300 w-10 text-right">{inact.pct_etudiants?.toFixed(0)}%</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Emploi sur place par secteur */}
+                      {sectData.length > 0 && (
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                          <h3 className="text-sm font-semibold text-white mb-0.5">Emploi sur place par secteur</h3>
+                          <p className="text-xs text-slate-500 mb-4">Emplois situés sur la commune · {emp.annee} · {formatNumber(empType.nb_emplois_sur_place ?? 0)} emplois au total</p>
+                          <div className="flex gap-6 items-center">
+                            <div style={{ width: "40%", minWidth: 160 }}>
+                              <ResponsiveContainer width="100%" height={180}>
+                                <PieChart>
+                                  <Pie data={sectData} cx="50%" cy="50%" innerRadius={45} outerRadius={75} dataKey="value" strokeWidth={2} stroke="#0f172a">
+                                    {sectData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                                  </Pie>
+                                  <Tooltip {...TT} formatter={(v: any) => formatNumber(v)} />
+                                </PieChart>
+                              </ResponsiveContainer>
+                            </div>
+                            <div className="flex-1 space-y-2">
+                              {sectData.map(d => (
+                                <div key={d.name}>
+                                  <div className="flex items-center justify-between mb-0.5">
+                                    <div className="flex items-center gap-1.5">
+                                      <div className="w-2 h-2 rounded-sm" style={{ background: d.fill }} />
+                                      <span className="text-xs text-slate-300">{d.name}</span>
+                                    </div>
+                                    <span className="text-xs font-mono text-slate-400">{d.pct?.toFixed(1)}%</span>
+                                  </div>
+                                  <div className="w-full bg-slate-800 rounded-full h-1">
+                                    <div className="h-1 rounded-full" style={{ width: `${d.pct}%`, background: d.fill }} />
+                                  </div>
                                 </div>
-                                <span className="text-xs font-mono text-slate-300 w-16 text-right">{formatNumber(nb as number)}</span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Type d'emploi */}
+                      {empType.pct_salaries != null && (
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                          <h3 className="text-sm font-semibold text-white mb-4">Type d'emploi · {emp.annee}</h3>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                            {empType.pct_salaries != null && (
+                              <div className="text-center">
+                                <p className="text-2xl font-bold text-blue-400">{empType.pct_salaries.toFixed(1)}<span className="text-sm">%</span></p>
+                                <p className="text-xs text-slate-500 mt-1">Salariés</p>
+                              </div>
+                            )}
+                            {empType.pct_non_salaries != null && (
+                              <div className="text-center">
+                                <p className="text-2xl font-bold text-violet-400">{empType.pct_non_salaries.toFixed(1)}<span className="text-sm">%</span></p>
+                                <p className="text-xs text-slate-500 mt-1">Non-salariés</p>
+                              </div>
+                            )}
+                            {empType.pct_sal_tp != null && (
+                              <div className="text-center">
+                                <p className="text-2xl font-bold text-amber-400">{empType.pct_sal_tp.toFixed(1)}<span className="text-sm">%</span></p>
+                                <p className="text-xs text-slate-500 mt-1">Temps partiel (parmi salariés)</p>
+                              </div>
+                            )}
+                          </div>
+                          <div className="mt-4 flex h-3 rounded-full overflow-hidden gap-px">
+                            <div className="bg-blue-500 transition-all" style={{ width: `${empType.pct_salaries ?? 0}%` }} />
+                            <div className="bg-violet-500 transition-all" style={{ width: `${empType.pct_non_salaries ?? 0}%` }} />
+                          </div>
+                          <div className="flex gap-4 mt-2">
+                            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-blue-500" /><span className="text-xs text-slate-500">Salariés</span></div>
+                            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-violet-500" /><span className="text-xs text-slate-500">Non-salariés</span></div>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+
+                {/* ── Tissu d'entreprises SIRENE ── */}
+                {inseeEconData?.etablissements?.total_actifs != null && (() => {
+                  type Sizes = { "0sal": number; "1_9": number; "10_49": number; "50plus": number };
+                  type Sec = { section: string; libelle: string; nb_actifs: number; pct: number; creations_an: number; taille: Sizes };
+                  const secs = inseeEconData.etablissements.sections as Sec[];
+                  const totalActifs    = inseeEconData.etablissements.total_actifs as number;
+                  const totalCreations = secs.reduce((s, r) => s + (r.creations_an ?? 0), 0);
+                  const sorted = [...secs].filter(s => s.nb_actifs > 0).sort((a, b) => b.nb_actifs - a.nb_actifs);
+                  const dominant = sorted[0];
+
+                  const tot0  = secs.reduce((s, r) => s + (r.taille?.["0sal"]   || 0), 0);
+                  const tot19 = secs.reduce((s, r) => s + (r.taille?.["1_9"]    || 0), 0);
+                  const tot49 = secs.reduce((s, r) => s + (r.taille?.["10_49"]  || 0), 0);
+                  const tot50 = secs.reduce((s, r) => s + (r.taille?.["50plus"] || 0), 0);
+                  const totalSize = tot0 + tot19 + tot49 + tot50 || 1;
+                  const sizeBands = [
+                    { nb: tot0,  fill: "#3b82f6", label: "Sans salarié"   },
+                    { nb: tot19, fill: "#8b5cf6", label: "1–9 sal."       },
+                    { nb: tot49, fill: "#10b981", label: "10–49 sal."     },
+                    { nb: tot50, fill: "#f59e0b", label: "50+ sal."       },
+                  ];
+                  const PIE_COLORS = ["#3b82f6","#8b5cf6","#10b981","#f59e0b","#ef4444","#06b6d4","#f97316","#84cc16","#ec4899","#14b8a6","#a855f7","#fb923c","#6366f1","#22c55e","#e11d48","#0ea5e9"];
+                  const pieData = sorted.map(s => ({ name: s.libelle.length > 24 ? s.libelle.slice(0, 22) + "…" : s.libelle, value: s.nb_actifs }));
+                  const dynamiques = [...secs].filter(s => s.nb_actifs >= 10 && (s.creations_an ?? 0) > 0).map(s => ({ ...s, taux: (s.creations_an / s.nb_actifs) * 100 })).sort((a, b) => b.taux - a.taux).slice(0, 5);
+                  const TT = { contentStyle: { background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 11 }, labelStyle: { color: "#94a3b8", fontSize: 11 } };
+
+                  return (
+                    <>
+                      <div className="flex items-center gap-3 mt-2">
+                        <div className="flex-1 border-t border-slate-800" />
+                        <span className="text-xs text-slate-500 shrink-0">Tissu d'entreprises — SIRENE</span>
+                        <div className="flex-1 border-t border-slate-800" />
+                        {inseeEconData.etablissements.annee_demandee != null && inseeEconData.etablissements.annee !== inseeEconData.etablissements.annee_demandee && (
+                          <span className="flex items-center gap-1 text-xs text-amber-400 shrink-0">
+                            <AlertCircle size={11} />
+                            {inseeEconData.etablissements.annee}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* KPIs */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <StatCard label="Établissements actifs" value={formatNumber(totalActifs)} size="sm" />
+                        <StatCard label="Créations / an" value={formatNumber(totalCreations)} size="sm" />
+                        <StatCard label="Taux de renouvellement" value={totalActifs > 0 ? ((totalCreations / totalActifs) * 100).toFixed(1) : "–"} unit="%" size="sm" />
+                        {dominant && <StatCard label="Secteur dominant" value={dominant.libelle.length > 16 ? dominant.libelle.slice(0, 14) + "…" : dominant.libelle} size="sm" />}
+                      </div>
+
+                      {/* Donut NAF + liste */}
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                        <h3 className="text-sm font-semibold text-white mb-0.5">Répartition par secteur NAF</h3>
+                        <p className="text-xs text-slate-500 mb-4">SIRENE · {inseeEconData.etablissements.annee}</p>
+                        <div className="flex gap-4 items-start">
+                          <div className="shrink-0" style={{ width: "45%" }}>
+                            <ResponsiveContainer width="100%" height={190}>
+                              <PieChart>
+                                <Pie data={pieData} cx="50%" cy="50%" innerRadius={52} outerRadius={82} dataKey="value" strokeWidth={2} stroke="#0f172a">
+                                  {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                                </Pie>
+                                <Tooltip {...TT} formatter={(v: any) => formatNumber(v as number) + " établ."} />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          </div>
+                          <div className="flex-1 min-w-0 space-y-1.5">
+                            {sorted.slice(0, 12).map((s, i) => (
+                              <div key={s.section} className="flex items-center gap-1.5">
+                                <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                                <span className="text-xs text-slate-400 flex-1 truncate">{s.libelle}</span>
+                                <span className="text-xs font-mono text-slate-300 shrink-0">{formatNumber(s.nb_actifs)}</span>
+                                {(s.creations_an ?? 0) > 0 && <span className="text-xs text-emerald-500 shrink-0 w-10 text-right">+{s.creations_an}</span>}
                               </div>
                             ))}
                           </div>
-                        );
-                      })()}
-                    </div>
-                  </>
+                        </div>
+                      </div>
+
+                      {/* Taille + Dynamisme */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                          <h3 className="text-sm font-semibold text-white mb-4">Taille des établissements</h3>
+                          <div className="flex h-4 rounded-lg overflow-hidden gap-px mb-4">
+                            {sizeBands.map(({ nb, fill }) => nb > 0 ? <div key={fill} style={{ width: `${nb / totalSize * 100}%`, background: fill }} /> : null)}
+                          </div>
+                          <div className="grid grid-cols-2 gap-y-2 gap-x-3">
+                            {sizeBands.map(({ nb, fill, label }) => (
+                              <div key={label} className="flex items-center gap-2">
+                                <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: fill }} />
+                                <span className="text-xs text-slate-400 flex-1">{label}</span>
+                                <span className="text-xs font-mono text-white">{formatNumber(nb)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {dynamiques.length > 0 && (
+                          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                            <h3 className="text-sm font-semibold text-white mb-0.5">Secteurs les plus dynamiques</h3>
+                            <p className="text-xs text-slate-500 mb-4">Taux de renouvellement (créations / stock)</p>
+                            <div className="space-y-3">
+                              {dynamiques.map(s => (
+                                <div key={s.section}>
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className="text-xs text-slate-300 truncate flex-1 mr-2">{s.libelle}</span>
+                                    <span className="text-xs font-bold text-emerald-400 shrink-0">{s.taux.toFixed(1)}%</span>
+                                  </div>
+                                  <div className="w-full bg-slate-800 rounded-full h-1.5">
+                                    <div className="h-1.5 rounded-full bg-emerald-500" style={{ width: `${Math.min(s.taux, 40) / 40 * 100}%` }} />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
+
+                {!loadingInseeEcon && !inseeEconData?.etablissements && !inseeEconData?.emploi && (
+                  <EmptyBlock label="Données économiques non disponibles — lancez la collecte sirene_etablissements et rp_emploi_actif." />
                 )}
               </div>
             )}
