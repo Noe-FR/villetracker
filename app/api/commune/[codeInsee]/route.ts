@@ -174,8 +174,8 @@ export async function GET(
       }
       case "insee_economie": {
         const [etab, emp] = await Promise.allSettled([
-          serverApi.getEtablissementsSirene(codeInsee),
-          serverApi.getEmploiSocial(codeInsee),
+          serverApi.getEtablissementsSirene(codeInsee, year),
+          serverApi.getEmploiSocial(codeInsee, year),
         ]);
         data = {
           etablissements: etab.status === "fulfilled" ? etab.value : null,

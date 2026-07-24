@@ -173,8 +173,8 @@ export const api = {
   getInseeServices: (codeInsee: string, year?: number) =>
     communeData(codeInsee, "services", year) as Promise<{ equip: any; tourisme: any }>,
 
-  getInseeEconomie: (codeInsee: string) =>
-    communeData(codeInsee, "insee_economie") as Promise<{ etablissements: any; emploi: any }>,
+  getInseeEconomie: (codeInsee: string, year?: number) =>
+    communeData(codeInsee, "insee_economie", year) as Promise<{ etablissements: any; emploi: any }>,
 
   getAvailableYears: () =>
     fetchJson<{ years: number[]; latest: number }>(`${BASE}/finances/available-years`)

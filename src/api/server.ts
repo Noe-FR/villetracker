@@ -177,8 +177,8 @@ export const serverApi = {
   getEquipements: (codeInsee: string, annee?: number) =>
     fetchJson<any>(`/demographie/commune/${codeInsee}/equipements${annee ? `?annee=${annee}` : ""}`),
 
-  getEtablissementsSirene: (codeInsee: string) =>
-    fetchJson<any>(`/demographie/commune/${codeInsee}/etablissements`),
+  getEtablissementsSirene: (codeInsee: string, annee?: number) =>
+    fetchJson<any>(`/demographie/commune/${codeInsee}/etablissements${annee ? `?annee=${annee}` : ""}`),
 
   getTourisme: (codeInsee: string) =>
     fetchJson<any>(`/demographie/commune/${codeInsee}/tourisme`),
