@@ -3370,48 +3370,82 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                       </span>
                       <StaleDataBadge selected={year} effective={effComp} />
                     </h2>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      {[
-                        {
-                          label: "TFB — commune",
-                          value: fiscalite.tfb.taux_commune,
-                          suffix: "%",
-                          sub: `Global : ${fiscalite.tfb.taux_global?.toFixed(2)}%`,
-                        },
-                        {
-                          label: "TFB — interco",
-                          value: fiscalite.tfb.taux_intercommunal,
-                          suffix: "%",
-                          sub: "taux voté",
-                        },
-                        {
-                          label: "TH rés. secondaires",
-                          value: fiscalite.th.taux_commune,
-                          suffix: "%",
-                          sub: `Majoration RS : +${fiscalite.th.majoration_rs ?? 0}%`,
-                        },
-                        {
-                          label: "TEOM",
-                          value: fiscalite.teom.taux,
-                          suffix: "%",
-                          sub: "Taxe ordures ménagères",
-                        },
-                      ].map(({ label, value, suffix, sub }) => (
-                        <div
-                          key={label}
-                          className="bg-slate-800 border border-slate-700 rounded-xl p-3"
-                        >
-                          <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">
-                            {label}
-                          </p>
-                          <p className="text-xl font-bold text-white">
-                            {value != null
-                              ? `${value?.toFixed(2)}${suffix}`
-                              : "—"}
-                          </p>
-                          <p className="text-xs text-slate-500 mt-0.5">{sub}</p>
+                    <div className="space-y-5">
+                      {/* TFB */}
+                      <div>
+                        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Taxe foncière sur les propriétés bâties (TFB)</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          {[
+                            { label: "Taux commune", value: fiscalite.tfb.taux_commune, sub: "voté par le conseil municipal" },
+                            { label: "Taux global", value: fiscalite.tfb.taux_global, sub: "commune + interco" },
+                            { label: "Taux interco", value: fiscalite.tfb.taux_intercommunal, sub: "part intercommunale" },
+                            { label: "Base d'imposition", value: null, custom: fiscalite.tfb.base > 0 ? (fiscalite.tfb.base >= 1e6 ? `${(fiscalite.tfb.base / 1e6).toFixed(1)} M€` : `${(fiscalite.tfb.base / 1e3).toFixed(0)} k€`) : "—", sub: "valeur locative cadastrale" },
+                          ].map(({ label, value, sub, custom }) => (
+                            <div key={label} className="bg-slate-800 border border-slate-700 rounded-xl p-3">
+                              <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">{label}</p>
+                              <p className="text-xl font-bold text-white">{custom ?? (value != null ? `${value.toFixed(2)}%` : "—")}</p>
+                              <p className="text-xs text-slate-500 mt-0.5">{sub}</p>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      </div>
+
+                      {/* TFNB — uniquement si données disponibles */}
+                      {(fiscalite.tfnb.taux_commune > 0 || fiscalite.tfnb.taux_global > 0) && (
+                        <div>
+                          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Taxe foncière sur les propriétés non bâties (TFNB)</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            {[
+                              { label: "Taux commune", value: fiscalite.tfnb.taux_commune, sub: "voté par le conseil municipal" },
+                              { label: "Taux global", value: fiscalite.tfnb.taux_global, sub: "commune + interco" },
+                              { label: "Taux interco", value: fiscalite.tfnb.taux_intercommunal, sub: "part intercommunale" },
+                            ].map(({ label, value, sub }) => (
+                              <div key={label} className="bg-slate-800 border border-slate-700 rounded-xl p-3">
+                                <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">{label}</p>
+                                <p className="text-xl font-bold text-white">{value != null ? `${value.toFixed(2)}%` : "—"}</p>
+                                <p className="text-xs text-slate-500 mt-0.5">{sub}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* TH + TEOM */}
+                      <div>
+                        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Taxe d'habitation (rés. secondaires) & TEOM</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          {[
+                            { label: "TH — commune", value: fiscalite.th.taux_commune, sub: `Majoration RS : +${fiscalite.th.majoration_rs ?? 0}%` },
+                            { label: "TH — global", value: fiscalite.th.taux_global, sub: "commune + interco" },
+                            { label: "TH — interco", value: fiscalite.th.taux_intercommunal, sub: "part intercommunale" },
+                            { label: "TEOM", value: fiscalite.teom.taux, sub: "Taxe ordures ménagères" },
+                          ].map(({ label, value, sub }) => (
+                            <div key={label} className="bg-slate-800 border border-slate-700 rounded-xl p-3">
+                              <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">{label}</p>
+                              <p className="text-xl font-bold text-white">{value != null ? `${value.toFixed(2)}%` : "—"}</p>
+                              <p className="text-xs text-slate-500 mt-0.5">{sub}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Base d'imposition TH */}
+                      {fiscalite.th.base > 0 && (
+                        <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-800">
+                          <div className="bg-slate-800/50 rounded-xl p-3">
+                            <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">Base TH</p>
+                            <p className="text-xl font-bold text-white">{fiscalite.th.base >= 1e6 ? `${(fiscalite.th.base / 1e6).toFixed(1)} M€` : `${(fiscalite.th.base / 1e3).toFixed(0)} k€`}</p>
+                            <p className="text-xs text-slate-500 mt-0.5">valeur locative habitations</p>
+                          </div>
+                          {fiscalite.tfb.base > 0 && (
+                            <div className="bg-slate-800/50 rounded-xl p-3">
+                              <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">Base TFB</p>
+                              <p className="text-xl font-bold text-white">{fiscalite.tfb.base >= 1e6 ? `${(fiscalite.tfb.base / 1e6).toFixed(1)} M€` : `${(fiscalite.tfb.base / 1e3).toFixed(0)} k€`}</p>
+                              <p className="text-xs text-slate-500 mt-0.5">valeur locative bâtiments</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -3497,6 +3531,15 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                         {demo?.indice_vieillissement != null && (
                           <StatCard label="Indice vieillissement" value={demo.indice_vieillissement.toFixed(0)} unit="/100" size="sm" />
                         )}
+                        {demo?.sex_ratio != null && (
+                          <StatCard label="Sex-ratio" value={demo.sex_ratio.toFixed(1)} unit="F/100H" size="sm" />
+                        )}
+                        {demo?.pct_immigres != null && (
+                          <StatCard label="Immigrés" value={demo.pct_immigres.toFixed(1)} unit="%" size="sm" />
+                        )}
+                        {demo?.pct_etrangers != null && (
+                          <StatCard label="Étrangers" value={demo.pct_etrangers.toFixed(1)} unit="%" size="sm" />
+                        )}
                       </div>
 
                       {/* Badges zonages */}
@@ -3561,8 +3604,14 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                             <StatCard label="Revenu médian" value={formatEuro(rev.revenu_median)} unit="/UC/an" size="sm" />
                             {rev.taux_pauvrete != null && <StatCard label="Taux de pauvreté" value={rev.taux_pauvrete?.toFixed(1)} unit="%" size="sm" />}
-                            {rev.revenu_q1 != null && <StatCard label="1er décile (D1)" value={formatEuro(rev.revenu_q1)} unit="/UC/an" size="sm" />}
+                            {rev.gini != null && <StatCard label="Indice de Gini" value={rev.gini.toFixed(3)} unit="" size="sm" />}
+                            {rev.revenu_q1 != null && <StatCard label="1er quartile (Q1)" value={formatEuro(rev.revenu_q1)} unit="/UC/an" size="sm" />}
+                            {rev.revenu_q3 != null && <StatCard label="3e quartile (Q3)" value={formatEuro(rev.revenu_q3)} unit="/UC/an" size="sm" />}
+                            {rev.nb_menages != null && <StatCard label="Ménages fiscaux" value={formatNumber(rev.nb_menages)} unit="" size="sm" />}
                           </div>
+                          {rev.gini != null && (
+                            <p className="text-[11px] text-slate-600 mt-2">Gini : 0 = égalité parfaite · 1 = inégalité totale. Fourchette habituelle des communes françaises : 0,25–0,45.</p>
+                          )}
 
                           {/* Évolution revenu médian sur les millésimes disponibles */}
                           {Array.isArray(rev.historique) && rev.historique.filter((h: any) => h.revenu_median != null).length >= 2 && (
@@ -3669,17 +3718,114 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                         <EmptyBlock label="Données emploi non disponibles — lancez la collecte emploi_social_rp." />
                       )}
 
+                      {/* Navettes domicile-travail */}
+                      {pop.navettes && (
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                          <h2 className="text-sm font-bold text-white mb-1">Navettes domicile-travail</h2>
+                          <p className="text-xs text-slate-500 mb-4">Source : INSEE Recensement de la Population — mobilité professionnelle</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                            {pop.navettes.pct_travaillent_commune != null && (
+                              <div className="bg-slate-800 border border-slate-700 rounded-xl p-3">
+                                <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">Travaillent dans la commune</p>
+                                <p className="text-xl font-bold text-emerald-400">{pop.navettes.pct_travaillent_commune.toFixed(1)}%</p>
+                                <p className="text-xs text-slate-500 mt-0.5">des actifs résidents</p>
+                              </div>
+                            )}
+                            {pop.navettes.indice_autonomie != null && (
+                              <div className="bg-slate-800 border border-slate-700 rounded-xl p-3">
+                                <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">Indice d'autonomie</p>
+                                <p className="text-xl font-bold text-white">{pop.navettes.indice_autonomie.toFixed(0)}</p>
+                                <p className="text-xs text-slate-500 mt-0.5">emplois / 100 actifs résidents</p>
+                              </div>
+                            )}
+                            {pop.navettes.solde_navette != null && (
+                              <div className="bg-slate-800 border border-slate-700 rounded-xl p-3">
+                                <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">Solde navette</p>
+                                <p className={`text-xl font-bold ${pop.navettes.solde_navette >= 0 ? "text-emerald-400" : "text-orange-400"}`}>
+                                  {pop.navettes.solde_navette >= 0 ? "+" : ""}{formatNumber(Math.round(pop.navettes.solde_navette))}
+                                </p>
+                                <p className="text-xs text-slate-500 mt-0.5">entrants – sortants</p>
+                              </div>
+                            )}
+                          </div>
+                          {(pop.navettes.navetteurs_entrants != null || pop.navettes.navetteurs_sortants != null) && (
+                            <div className="grid grid-cols-2 gap-3">
+                              {pop.navettes.navetteurs_entrants != null && (
+                                <div className="flex items-center gap-3 bg-slate-800/60 rounded-lg p-3">
+                                  <div className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
+                                  <div>
+                                    <p className="text-xs text-slate-400">Navetteurs entrants</p>
+                                    <p className="text-sm font-semibold text-white">{formatNumber(pop.navettes.navetteurs_entrants)}</p>
+                                  </div>
+                                </div>
+                              )}
+                              {pop.navettes.navetteurs_sortants != null && (
+                                <div className="flex items-center gap-3 bg-slate-800/60 rounded-lg p-3">
+                                  <div className="w-2 h-2 rounded-full bg-orange-400 shrink-0" />
+                                  <div>
+                                    <p className="text-xs text-slate-400">Navetteurs sortants</p>
+                                    <p className="text-sm font-semibold text-white">{formatNumber(pop.navettes.navetteurs_sortants)}</p>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {/* Logement */}
                       {log && (
                         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
                           <h2 className="text-sm font-bold text-white mb-1">Logement</h2>
                           <p className="text-xs text-slate-500 mb-4">Source : INSEE Recensement de la Population {log.annee}</p>
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+
+                          {/* Type de logements */}
+                          {(log.types?.pct_maisons != null || log.types?.pct_appartements != null) && (
+                            <div className="mb-4">
+                              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2.5">Type de logements</p>
+                              <div className="space-y-2">
+                                {log.types?.pct_maisons != null && (
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-xs text-slate-400 w-28 shrink-0">Maisons</span>
+                                    <div className="flex-1 bg-slate-800 rounded-full h-2.5">
+                                      <div className="bg-amber-500 h-2.5 rounded-full" style={{ width: `${Math.min(log.types.pct_maisons, 100)}%` }} />
+                                    </div>
+                                    <span className="text-xs font-mono text-slate-300 w-12 text-right">{log.types.pct_maisons.toFixed(1)}%</span>
+                                  </div>
+                                )}
+                                {log.types?.pct_appartements != null && (
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-xs text-slate-400 w-28 shrink-0">Appartements</span>
+                                    <div className="flex-1 bg-slate-800 rounded-full h-2.5">
+                                      <div className="bg-blue-500 h-2.5 rounded-full" style={{ width: `${Math.min(log.types.pct_appartements, 100)}%` }} />
+                                    </div>
+                                    <span className="text-xs font-mono text-slate-300 w-12 text-right">{log.types.pct_appartements.toFixed(1)}%</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Statut d'occupation */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                             {log.statut_occupation?.proprietaires != null && <StatCard label="Propriétaires" value={log.statut_occupation.proprietaires?.toFixed(1)} unit="%" size="sm" />}
                             {log.statut_occupation?.locataires_priv != null && <StatCard label="Loc. privés" value={log.statut_occupation.locataires_priv?.toFixed(1)} unit="%" size="sm" />}
                             {log.statut_occupation?.locataires_hlm != null && <StatCard label="HLM" value={log.statut_occupation.locataires_hlm?.toFixed(1)} unit="%" size="sm" />}
                             {log.surface_moyenne != null && <StatCard label="Surface moyenne" value={log.surface_moyenne?.toFixed(0)} unit="m²" size="sm" />}
                           </div>
+
+                          {/* Parc de logements & mobilité résidentielle */}
+                          {(log.nb_logements?.logements_vacants != null || log.nb_logements?.residences_secondaires != null || log.mobilite?.emmenagement_moins_2ans != null) && (
+                            <div>
+                              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2.5">Parc & mobilité résidentielle</p>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                {log.nb_logements?.logements_vacants != null && <StatCard label="Logements vacants" value={formatNumber(log.nb_logements.logements_vacants)} unit="" size="sm" />}
+                                {log.nb_logements?.residences_secondaires != null && <StatCard label="Rés. secondaires" value={formatNumber(log.nb_logements.residences_secondaires)} unit="" size="sm" />}
+                                {log.mobilite?.emmenagement_moins_2ans != null && <StatCard label="< 2 ans dans logement" value={log.mobilite.emmenagement_moins_2ans.toFixed(1)} unit="%" size="sm" />}
+                                {log.mobilite?.emmenagement_plus_10ans != null && <StatCard label="> 10 ans dans logement" value={log.mobilite.emmenagement_plus_10ans.toFixed(1)} unit="%" size="sm" />}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                       {!log && !loadingInseeDemo && (
