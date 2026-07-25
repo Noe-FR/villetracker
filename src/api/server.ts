@@ -157,4 +157,32 @@ export const serverApi = {
 
   getNationalFun: () =>
     fetchJson<any>(`/national/fun`),
+
+  // ── INSEE — Population / Social / Services / Économie ─────────────────────
+  getPopulation: (codeInsee: string) =>
+    fetchJson<any>(`/demographie/commune/${codeInsee}/population`),
+
+  getDemographie: (codeInsee: string, annee?: number) =>
+    fetchJson<any>(`/demographie/commune/${codeInsee}/demographie${annee ? `?annee=${annee}` : ""}`),
+
+  getRevenus: (codeInsee: string) =>
+    fetchJson<any>(`/demographie/commune/${codeInsee}/revenus`),
+
+  getEmploiSocial: (codeInsee: string, annee?: number) =>
+    fetchJson<any>(`/demographie/commune/${codeInsee}/emploi-social${annee ? `?annee=${annee}` : ""}`),
+
+  getLogement: (codeInsee: string, annee?: number) =>
+    fetchJson<any>(`/demographie/commune/${codeInsee}/logement${annee ? `?annee=${annee}` : ""}`),
+
+  getEquipements: (codeInsee: string, annee?: number) =>
+    fetchJson<any>(`/demographie/commune/${codeInsee}/equipements${annee ? `?annee=${annee}` : ""}`),
+
+  getEtablissementsSirene: (codeInsee: string, annee?: number) =>
+    fetchJson<any>(`/demographie/commune/${codeInsee}/etablissements${annee ? `?annee=${annee}` : ""}`),
+
+  getTourisme: (codeInsee: string) =>
+    fetchJson<any>(`/demographie/commune/${codeInsee}/tourisme`),
+
+  getSocialSummary: (codeInsee: string) =>
+    fetchJson<any>(`/demographie/commune/${codeInsee}/social/summary`),
 };

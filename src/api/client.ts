@@ -163,6 +163,19 @@ export const api = {
   getEauMensuel: (codeInsee: string) =>
     communeData(codeInsee, "eau").then((d: any) => d?.eauMensuel) as Promise<any>,
 
+  // ── INSEE — Démographie / Services / Économie ──────────────────────────────
+  getInseeDemographie: (codeInsee: string, year?: number) =>
+    communeData(codeInsee, "demographie", year) as Promise<{
+      population: any; demographie: any;
+      revenus: any; emploi: any; logement: any;
+    }>,
+
+  getInseeServices: (codeInsee: string, year?: number) =>
+    communeData(codeInsee, "services", year) as Promise<{ equip: any; tourisme: any }>,
+
+  getInseeEconomie: (codeInsee: string, year?: number) =>
+    communeData(codeInsee, "insee_economie", year) as Promise<{ etablissements: any; emploi: any }>,
+
   getAvailableYears: () =>
     fetchJson<{ years: number[]; latest: number }>(`${BASE}/finances/available-years`)
       .catch(() => ({ years: [2020, 2021, 2022, 2023], latest: 2023 })),

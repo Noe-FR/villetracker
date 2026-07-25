@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useImperativeHandle, forwardRef } from "react";
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -13,6 +13,7 @@ import {
   Loader2,
   AlertCircle,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   Zap,
   Leaf,
@@ -42,7 +43,7 @@ import { api } from "../api/client";
 import { StatCard } from "../components/Panel/StatCard";
 import { higherIsBetter as hib } from "../utils/indicators";
 import { EvolutionChart } from "../components/Charts/EvolutionChart";
-import { AreaChart, Area, LineChart, Line, Legend, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import { AreaChart, Area, LineChart, Line, BarChart, Bar, Legend, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, RadarChart, Radar, PolarGrid, PolarAngleAxis, PieChart, Pie, Cell, LabelList } from "recharts";
 import { ComparisonChart } from "../components/Charts/ComparisonChart";
 import { Footer } from "../components/Footer";
 import { AgregatsChart } from "../components/Charts/AgregatsChart";
@@ -56,7 +57,7 @@ import {
   DIM_ACCENT,
 } from "../utils/financialScore";
 
-type Tab = "finances" | "comparaison" | "energie" | "economie" | "comptable" | "conseil" | "immobilier";
+type Tab = "finances" | "comparaison" | "energie" | "economie" | "comptable" | "conseil" | "immobilier" | "demographie" | "services" | "insee_economie";
 
 // ── YoY helpers ───────────────────────────────────────────────────────────────
 
@@ -1398,6 +1399,24 @@ const MAX_ENERGIE    = 2022; // Agence ORE
 const MAX_FISCPRO    = 2022; // Fiscalité pro DGFiP
 const MAX_IMMO       = 2024; // DVF tabular
 
+function LoadingBlock({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-2 text-slate-400 py-8 justify-center">
+      <Loader2 size={20} className="animate-spin" />
+      {label}
+    </div>
+  );
+}
+
+function EmptyBlock({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-2 text-slate-500 bg-slate-900 border border-slate-800 rounded-xl p-5 text-sm">
+      <AlertCircle size={15} className="shrink-0 text-slate-600" />
+      {label}
+    </div>
+  );
+}
+
 function StaleDataBadge({ selected, effective }: { selected: number; effective: number }) {
   if (selected === effective) return null;
   return (
@@ -1408,13 +1427,16 @@ function StaleDataBadge({ selected, effective }: { selected: number; effective: 
 }
 
 const TABS: { id: Tab; label: string; icon: React.ElementType; metroOnly?: boolean }[] = [
-  { id: "finances",    label: "Finances",            icon: BarChart2,    metroOnly: true },
-  { id: "comparaison", label: "Comparaison",         icon: GitCompare,   metroOnly: true },
-  { id: "energie",    label: "Énergie & Territoire", icon: Zap,          metroOnly: true },
-  { id: "economie",   label: "Économie",             icon: ShoppingCart, metroOnly: true },
-  { id: "conseil",    label: "Conseil municipal",    icon: Users2 },
-  { id: "immobilier", label: "Immobilier",           icon: Building2,    metroOnly: true },
-  { id: "comptable",  label: "Grand livre",          icon: BookOpen,     metroOnly: true },
+  { id: "finances",       label: "Finances",            icon: BarChart2,    metroOnly: true },
+  { id: "comparaison",    label: "Comparaison",         icon: GitCompare,   metroOnly: true },
+  { id: "demographie",    label: "Démographie & Social", icon: Users,       metroOnly: true },
+  { id: "services",       label: "Services",            icon: ShieldCheck,  metroOnly: true },
+  { id: "insee_economie", label: "Économie locale",     icon: Building2,    metroOnly: true },
+  { id: "energie",        label: "Énergie & Territoire", icon: Zap,         metroOnly: true },
+  { id: "economie",       label: "Marchés publics",     icon: ShoppingCart, metroOnly: true },
+  { id: "conseil",        label: "Conseil municipal",   icon: Users2 },
+  { id: "immobilier",     label: "Immobilier",          icon: Building2,    metroOnly: true },
+  { id: "comptable",      label: "Grand livre",         icon: BookOpen,     metroOnly: true },
 ];
 
 // Collectivités d'outre-mer sans données OFGL (≠ DOM 971-974, 976 qui ont leurs finances)
@@ -1498,13 +1520,45 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
   const effFiscPro = Math.min(year, MAX_FISCPRO);
   const effImmo    = Math.min(year, MAX_IMMO);
   const [tab, setTab] = useState<Tab>("finances");
+  const tabsNavRef = useRef<HTMLElement>(null);
+  const [canScrollLeft,  setCanScrollLeft]  = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
   const domTom = isLimitedTerritory(codeInsee ?? "");
+
+  const updateScrollState = () => {
+    const el = tabsNavRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  };
+
+  const scrollTabs = (dir: "left" | "right") => {
+    tabsNavRef.current?.scrollBy({ left: dir === "right" ? 160 : -160, behavior: "smooth" });
+  };
+
   // Rediriger vers conseil si territoire limité et onglet non disponible
   useEffect(() => {
     if (domTom && TABS.find(t => t.id === tab)?.metroOnly) {
       setTab("conseil");
     }
   }, [codeInsee, domTom]);
+  // Scroll l'onglet actif dans la zone visible
+  useEffect(() => {
+    if (!tabsNavRef.current) return;
+    const btn = tabsNavRef.current.querySelector<HTMLElement>(`[data-tab="${tab}"]`);
+    btn?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+  }, [tab]);
+  // Init + écoute du scroll pour afficher/cacher les flèches
+  useLayoutEffect(() => {
+    const el = tabsNavRef.current;
+    if (!el) return;
+    // rAF : on attend que le navigateur ait calculé les dimensions réelles
+    const raf = requestAnimationFrame(updateScrollState);
+    el.addEventListener("scroll", updateScrollState, { passive: true });
+    const ro = new ResizeObserver(updateScrollState);
+    ro.observe(el);
+    return () => { cancelAnimationFrame(raf); el.removeEventListener("scroll", updateScrollState); ro.disconnect(); };
+  }, [codeInsee]);
   const [chartMode, setChartMode] = useState<"eph" | "montant">("eph");
   const [selectedElectionId, setSelectedElectionId] = useState<string | null>(null);
   const scoreDetailRef = useRef<HTMLDivElement>(null);
@@ -1672,6 +1726,23 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
   );
   const dvfMapRef = useRef<DvfSalesMapHandle>(null);
   const [dvfPointsVisible, setDvfPointsVisible] = useState(true);
+
+  // ── INSEE — Démographie / Services / Économie ────────────────────────────
+  const { data: inseeDemoData, loading: loadingInseeDemo } = useApi(
+    () => tab === "demographie" ? api.getInseeDemographie(codeInsee!, year) : Promise.resolve(null as any),
+    [codeInsee, tab, year],
+    `insee_demo:${codeInsee}:${year}`
+  );
+  const { data: inseeServicesData, loading: loadingInseeServices } = useApi(
+    () => tab === "services" ? api.getInseeServices(codeInsee!, year) : Promise.resolve(null as any),
+    [codeInsee, tab, year],
+    `insee_services:${codeInsee}:${year}`
+  );
+  const { data: inseeEconData, loading: loadingInseeEcon } = useApi(
+    () => tab === "insee_economie" ? api.getInseeEconomie(codeInsee!, year) : Promise.resolve(null as any),
+    [codeInsee, tab, year],
+    `insee_econ:${codeInsee}:${year}`
+  );
 
   // Auto-select most recent election when historique loads
   useEffect(() => {
@@ -1894,24 +1965,48 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
             )}
 
             {/* ── Tabs ─────────────────────────────────────────────────── */}
-            <div className="border-b border-slate-800">
-              <nav className="flex gap-0.5 overflow-x-auto">
+            <div className="relative flex items-center border-b border-slate-800/60">
+              {/* Flèche gauche */}
+              {canScrollLeft && (
+                <button
+                  onClick={() => scrollTabs("left")}
+                  className="flex-shrink-0 flex items-center justify-center w-7 h-full pl-1 bg-gradient-to-r from-slate-900 via-slate-900 to-transparent absolute left-0 top-0 bottom-0 z-10 text-slate-400 hover:text-white transition-colors"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+              )}
+              {/* Flèche droite */}
+              {canScrollRight && (
+                <button
+                  onClick={() => scrollTabs("right")}
+                  className="flex-shrink-0 flex items-center justify-center w-7 h-full pr-1 bg-gradient-to-l from-slate-900 via-slate-900 to-transparent absolute right-0 top-0 bottom-0 z-10 text-slate-400 hover:text-white transition-colors"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              )}
+              <nav
+                ref={tabsNavRef}
+                className="flex gap-1 overflow-x-auto px-3 py-2 [&::-webkit-scrollbar]:hidden w-full"
+                style={{ scrollbarWidth: "none" }}
+              >
                 {TABS.map(({ id, label, icon: Icon, metroOnly }) => {
                   const disabled = domTom && metroOnly;
+                  const active = tab === id;
                   return (
                     <button
                       key={id}
+                      data-tab={id}
                       onClick={() => !disabled && setTab(id)}
                       disabled={disabled}
-                      className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-all duration-150 flex-shrink-0 ${
                         disabled
-                          ? "border-transparent text-slate-600 cursor-not-allowed"
-                          : tab === id
-                            ? "border-blue-500 text-blue-400"
-                            : "border-transparent text-slate-400 hover:text-white"
+                          ? "text-slate-600 cursor-not-allowed"
+                          : active
+                            ? "bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/25"
+                            : "text-slate-400 hover:text-slate-100 hover:bg-slate-800"
                       }`}
                     >
-                      <Icon size={14} />
+                      <Icon size={13} className="flex-shrink-0" />
                       {label}
                     </button>
                   );
@@ -3275,48 +3370,82 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                       </span>
                       <StaleDataBadge selected={year} effective={effComp} />
                     </h2>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                      {[
-                        {
-                          label: "TFB — commune",
-                          value: fiscalite.tfb.taux_commune,
-                          suffix: "%",
-                          sub: `Global : ${fiscalite.tfb.taux_global?.toFixed(2)}%`,
-                        },
-                        {
-                          label: "TFB — interco",
-                          value: fiscalite.tfb.taux_intercommunal,
-                          suffix: "%",
-                          sub: "taux voté",
-                        },
-                        {
-                          label: "TH rés. secondaires",
-                          value: fiscalite.th.taux_commune,
-                          suffix: "%",
-                          sub: `Majoration RS : +${fiscalite.th.majoration_rs ?? 0}%`,
-                        },
-                        {
-                          label: "TEOM",
-                          value: fiscalite.teom.taux,
-                          suffix: "%",
-                          sub: "Taxe ordures ménagères",
-                        },
-                      ].map(({ label, value, suffix, sub }) => (
-                        <div
-                          key={label}
-                          className="bg-slate-800 border border-slate-700 rounded-xl p-3"
-                        >
-                          <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">
-                            {label}
-                          </p>
-                          <p className="text-xl font-bold text-white">
-                            {value != null
-                              ? `${value?.toFixed(2)}${suffix}`
-                              : "—"}
-                          </p>
-                          <p className="text-xs text-slate-500 mt-0.5">{sub}</p>
+                    <div className="space-y-5">
+                      {/* TFB */}
+                      <div>
+                        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Taxe foncière sur les propriétés bâties (TFB)</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          {[
+                            { label: "Taux commune", value: fiscalite.tfb.taux_commune, sub: "voté par le conseil municipal" },
+                            { label: "Taux global", value: fiscalite.tfb.taux_global, sub: "commune + interco" },
+                            { label: "Taux interco", value: fiscalite.tfb.taux_intercommunal, sub: "part intercommunale" },
+                            { label: "Base d'imposition", value: null, custom: fiscalite.tfb.base > 0 ? (fiscalite.tfb.base >= 1e6 ? `${(fiscalite.tfb.base / 1e6).toFixed(1)} M€` : `${(fiscalite.tfb.base / 1e3).toFixed(0)} k€`) : "—", sub: "valeur locative cadastrale" },
+                          ].map(({ label, value, sub, custom }) => (
+                            <div key={label} className="bg-slate-800 border border-slate-700 rounded-xl p-3">
+                              <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">{label}</p>
+                              <p className="text-xl font-bold text-white">{custom ?? (value != null ? `${value.toFixed(2)}%` : "—")}</p>
+                              <p className="text-xs text-slate-500 mt-0.5">{sub}</p>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      </div>
+
+                      {/* TFNB — uniquement si données disponibles */}
+                      {(fiscalite.tfnb.taux_commune > 0 || fiscalite.tfnb.taux_global > 0) && (
+                        <div>
+                          <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Taxe foncière sur les propriétés non bâties (TFNB)</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            {[
+                              { label: "Taux commune", value: fiscalite.tfnb.taux_commune, sub: "voté par le conseil municipal" },
+                              { label: "Taux global", value: fiscalite.tfnb.taux_global, sub: "commune + interco" },
+                              { label: "Taux interco", value: fiscalite.tfnb.taux_intercommunal, sub: "part intercommunale" },
+                            ].map(({ label, value, sub }) => (
+                              <div key={label} className="bg-slate-800 border border-slate-700 rounded-xl p-3">
+                                <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">{label}</p>
+                                <p className="text-xl font-bold text-white">{value != null ? `${value.toFixed(2)}%` : "—"}</p>
+                                <p className="text-xs text-slate-500 mt-0.5">{sub}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* TH + TEOM */}
+                      <div>
+                        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Taxe d'habitation (rés. secondaires) & TEOM</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          {[
+                            { label: "TH — commune", value: fiscalite.th.taux_commune, sub: `Majoration RS : +${fiscalite.th.majoration_rs ?? 0}%` },
+                            { label: "TH — global", value: fiscalite.th.taux_global, sub: "commune + interco" },
+                            { label: "TH — interco", value: fiscalite.th.taux_intercommunal, sub: "part intercommunale" },
+                            { label: "TEOM", value: fiscalite.teom.taux, sub: "Taxe ordures ménagères" },
+                          ].map(({ label, value, sub }) => (
+                            <div key={label} className="bg-slate-800 border border-slate-700 rounded-xl p-3">
+                              <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">{label}</p>
+                              <p className="text-xl font-bold text-white">{value != null ? `${value.toFixed(2)}%` : "—"}</p>
+                              <p className="text-xs text-slate-500 mt-0.5">{sub}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Base d'imposition TH */}
+                      {fiscalite.th.base > 0 && (
+                        <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-800">
+                          <div className="bg-slate-800/50 rounded-xl p-3">
+                            <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">Base TH</p>
+                            <p className="text-xl font-bold text-white">{fiscalite.th.base >= 1e6 ? `${(fiscalite.th.base / 1e6).toFixed(1)} M€` : `${(fiscalite.th.base / 1e3).toFixed(0)} k€`}</p>
+                            <p className="text-xs text-slate-500 mt-0.5">valeur locative habitations</p>
+                          </div>
+                          {fiscalite.tfb.base > 0 && (
+                            <div className="bg-slate-800/50 rounded-xl p-3">
+                              <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">Base TFB</p>
+                              <p className="text-xl font-bold text-white">{fiscalite.tfb.base >= 1e6 ? `${(fiscalite.tfb.base / 1e6).toFixed(1)} M€` : `${(fiscalite.tfb.base / 1e3).toFixed(0)} k€`}</p>
+                              <p className="text-xs text-slate-500 mt-0.5">valeur locative bâtiments</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -3348,6 +3477,894 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                       <ClasseAccordion key={classe.classe} classe={classe} />
                     ))}
                   </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Tab: Démographie & Social ─────────────────────────────────── */}
+            {tab === "demographie" && (
+              <div className="space-y-6">
+                {loadingInseeDemo && <LoadingBlock label="Chargement données démographiques…" />}
+
+                {/* Section Population */}
+                {!loadingInseeDemo && (inseeDemoData?.population?.historique?.length ?? 0) === 0 && (
+                  <EmptyBlock label="Données historiques non disponibles — lancez la collecte population_historique depuis l'admin." />
+                )}
+
+                {(inseeDemoData?.population?.historique?.length ?? 0) > 0 && (() => {
+                  const pop   = inseeDemoData!.population;
+                  const demo  = inseeDemoData?.demographie;
+                  const rev   = inseeDemoData?.revenus;
+                  const emp   = inseeDemoData?.emploi;
+                  const log   = inseeDemoData?.logement;
+
+                  // Millésime RP affiché (le plus proche de l'année sélectionnée)
+                  const rpAnnee = emp?.annee ?? demo?.annee ?? log?.annee ?? null;
+                  const rpStale = rpAnnee != null && rpAnnee !== year;
+
+                  return (
+                    <>
+                      {/* Bandeau millésime RP + badge données datées */}
+                      {rpAnnee != null && (
+                        <div className="flex items-center gap-2 text-xs text-slate-400">
+                          <span className="px-2 py-1 rounded-md bg-slate-800 border border-slate-700">
+                            Recensement INSEE — millésime {rpAnnee}
+                          </span>
+                          {rpStale && (
+                            <span className="flex items-center gap-1 text-amber-400">
+                              <AlertCircle size={12} />
+                              millésime le plus proche de {year} disponible
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* KPIs population */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <StatCard label="Population" value={formatNumber(pop.population ?? 0)} unit="hab" size="sm" />
+                        {pop.evol_10ans_pct != null && (
+                          <StatCard label="Évolution 10 ans" value={(pop.evol_10ans_pct > 0 ? "+" : "") + pop.evol_10ans_pct.toFixed(1)} unit="%" higherIsBetter size="sm" />
+                        )}
+                        {demo?.age_moyen != null && (
+                          <StatCard label="Âge moyen" value={demo.age_moyen.toFixed(1)} unit="ans" size="sm" />
+                        )}
+                        {demo?.indice_vieillissement != null && (
+                          <StatCard label="Indice vieillissement" value={demo.indice_vieillissement.toFixed(0)} unit="/100" size="sm" />
+                        )}
+                        {demo?.sex_ratio != null && (
+                          <StatCard label="Sex-ratio" value={demo.sex_ratio.toFixed(1)} unit="F/100H" size="sm" />
+                        )}
+                        {demo?.pct_immigres != null && (
+                          <StatCard label="Immigrés" value={demo.pct_immigres.toFixed(1)} unit="%" size="sm" />
+                        )}
+                        {demo?.pct_etrangers != null && (
+                          <StatCard label="Étrangers" value={demo.pct_etrangers.toFixed(1)} unit="%" size="sm" />
+                        )}
+                      </div>
+
+                      {/* Badges zonages */}
+                      {(pop.en_qpv || pop.en_zrr || pop.en_frr) && (
+                        <div className="flex gap-2 flex-wrap">
+                          {pop.en_qpv && <span className="px-3 py-1 rounded-full text-xs font-semibold bg-orange-900/40 text-orange-300 border border-orange-800">QPV — Quartier prioritaire politique de la ville</span>}
+                          {pop.en_zrr && <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-900/40 text-emerald-300 border border-emerald-800">ZRR — Zone de revitalisation rurale</span>}
+                          {pop.en_frr && <span className="px-3 py-1 rounded-full text-xs font-semibold bg-teal-900/40 text-teal-300 border border-teal-800">FRR — France Ruralités Revitalisation</span>}
+                        </div>
+                      )}
+
+                      {/* Courbe historique */}
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                        <h2 className="text-sm font-bold text-white mb-1">Évolution de la population</h2>
+                        <p className="text-xs text-slate-500 mb-4">Source : INSEE — séries historiques 1876→2023</p>
+                        <ResponsiveContainer width="100%" height={200}>
+                          <LineChart data={pop.historique}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                            <XAxis dataKey="annee" tick={{ fontSize: 11, fill: "#94a3b8" }} interval={9} />
+                            <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} tickFormatter={(v) => formatNumber(v)} width={70} />
+                            <Tooltip
+                              contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8 }}
+                              labelStyle={{ color: "#94a3b8", fontSize: 12 }}
+                              formatter={(v: any) => [formatNumber(v), "habitants"]}
+                            />
+                            <Line type="monotone" dataKey="population" stroke="#3b82f6" strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      {/* Pyramide des âges */}
+                      {demo?.tranches_age && Object.values(demo.tranches_age).some((v: any) => v != null) && (
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                          <h2 className="text-sm font-bold text-white mb-1">Répartition par tranche d'âge</h2>
+                          <p className="text-xs text-slate-500 mb-4">Source : INSEE Recensement de la Population {demo.annee}</p>
+                          <div className="space-y-2.5">
+                            {(Object.entries({
+                              "0–14 ans":  demo.tranches_age["0_14"],
+                              "15–29 ans": demo.tranches_age["15_29"],
+                              "30–44 ans": demo.tranches_age["30_44"],
+                              "45–59 ans": demo.tranches_age["45_59"],
+                              "60–74 ans": demo.tranches_age["60_74"],
+                              "75 ans +":  demo.tranches_age["75_plus"],
+                            }) as [string, number | null][]).map(([label, pct]) => pct != null && (
+                              <div key={label} className="flex items-center gap-3">
+                                <span className="text-xs text-slate-400 w-20 shrink-0">{label}</span>
+                                <div className="flex-1 bg-slate-800 rounded-full h-2.5">
+                                  <div className="bg-blue-500 h-2.5 rounded-full transition-all" style={{ width: `${Math.min(pct, 100)}%` }} />
+                                </div>
+                                <span className="text-xs font-mono text-slate-300 w-12 text-right">{pct?.toFixed(1)}%</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Revenus */}
+                      {rev && !rev.secret_statistique && rev.revenu_median != null && (
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                          <h2 className="text-sm font-bold text-white mb-1">Revenus des ménages</h2>
+                          <p className="text-xs text-slate-500 mb-4">Source : INSEE Filosofi {rev.annee} — revenu disponible par unité de consommation</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            <StatCard label="Revenu médian" value={formatEuro(rev.revenu_median)} unit="/UC/an" size="sm" />
+                            {rev.taux_pauvrete != null && <StatCard label="Taux de pauvreté" value={rev.taux_pauvrete?.toFixed(1)} unit="%" size="sm" />}
+                            {rev.gini != null && <StatCard label="Indice de Gini" value={rev.gini.toFixed(3)} unit="" size="sm" />}
+                            {rev.revenu_q1 != null && <StatCard label="1er quartile (Q1)" value={formatEuro(rev.revenu_q1)} unit="/UC/an" size="sm" />}
+                            {rev.revenu_q3 != null && <StatCard label="3e quartile (Q3)" value={formatEuro(rev.revenu_q3)} unit="/UC/an" size="sm" />}
+                            {rev.nb_menages != null && <StatCard label="Ménages fiscaux" value={formatNumber(rev.nb_menages)} unit="" size="sm" />}
+                          </div>
+                          {rev.gini != null && (
+                            <p className="text-[11px] text-slate-600 mt-2">Gini : 0 = égalité parfaite · 1 = inégalité totale. Fourchette habituelle des communes françaises : 0,25–0,45.</p>
+                          )}
+
+                          {/* Évolution revenu médian sur les millésimes disponibles */}
+                          {Array.isArray(rev.historique) && rev.historique.filter((h: any) => h.revenu_median != null).length >= 2 && (
+                            <div className="mt-4">
+                              <h3 className="text-xs font-semibold text-slate-400 mb-2">Évolution du revenu médian</h3>
+                              <ResponsiveContainer width="100%" height={150}>
+                                <LineChart data={rev.historique.filter((h: any) => h.revenu_median != null)}>
+                                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                                  <XAxis dataKey="annee" tick={{ fontSize: 11, fill: "#94a3b8" }} />
+                                  <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} width={55} tickFormatter={(v) => `${(v/1000).toFixed(0)}k€`} />
+                                  <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8 }} labelStyle={{ color: "#94a3b8", fontSize: 12 }} formatter={(v: any) => [formatEuro(v), "médian/UC/an"]} />
+                                  <Line type="monotone" dataKey="revenu_median" stroke="#10b981" strokeWidth={2.5} dot={{ r: 3 }} />
+                                </LineChart>
+                              </ResponsiveContainer>
+                              <p className="text-[11px] text-slate-600 mt-1">Note : à partir de 2023, méthodologie Filosofi 2 (rupture de série avec les millésimes antérieurs).</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {rev?.secret_statistique && (
+                        <div className="flex items-center gap-2 bg-amber-900/20 border border-amber-800 rounded-xl p-4 text-xs text-amber-300">
+                          <AlertCircle size={14} />
+                          Secret statistique — données de revenus non publiées pour les communes de moins de 1 000 habitants (protection de l'anonymat).
+                        </div>
+                      )}
+                      {!rev && !loadingInseeDemo && (
+                        <EmptyBlock label="Revenus non disponibles — lancez la collecte revenus_filosofi." />
+                      )}
+
+                      {/* Emploi / CSP */}
+                      {emp && (
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                          <h2 className="text-sm font-bold text-white mb-1">Emploi et catégories socioprofessionnelles</h2>
+                          <p className="text-xs text-slate-500 mb-4">Source : INSEE Recensement de la Population {emp.annee}</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
+                            {emp.activite?.taux_activite != null && <StatCard label="Taux d'activité" value={emp.activite.taux_activite?.toFixed(1)} unit="%" size="sm" higherIsBetter />}
+                            {emp.activite?.taux_chomage != null && <StatCard label="Taux de chômage" value={emp.activite.taux_chomage?.toFixed(1)} unit="%" size="sm" />}
+                          </div>
+
+                          {/* Évolution chômage / cadres sur les millésimes disponibles */}
+                          {Array.isArray(emp.historique) && emp.historique.length >= 2 && (
+                            <div className="mb-5">
+                              <h3 className="text-xs font-semibold text-slate-400 mb-2">Évolution {emp.historique[0].annee}–{emp.historique[emp.historique.length-1].annee}</h3>
+                              <ResponsiveContainer width="100%" height={160}>
+                                <LineChart data={emp.historique}>
+                                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                                  <XAxis dataKey="annee" tick={{ fontSize: 11, fill: "#94a3b8" }} />
+                                  <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} width={35} unit="%" />
+                                  <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8 }} labelStyle={{ color: "#94a3b8", fontSize: 12 }} />
+                                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                                  <Line type="monotone" dataKey="taux_chomage" name="Chômage" stroke="#f97316" strokeWidth={2} dot={{ r: 3 }} />
+                                  <Line type="monotone" dataKey="pct_cadres" name="Cadres" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
+                                </LineChart>
+                              </ResponsiveContainer>
+                            </div>
+                          )}
+
+                          {emp.csp && (
+                            <div className="space-y-2">
+                              {(Object.entries({
+                                "Cadres & professions intellectuelles": emp.csp.cadres,
+                                "Professions intermédiaires": emp.csp.prof_intermediaires,
+                                "Employés":     emp.csp.employes,
+                                "Ouvriers":     emp.csp.ouvriers,
+                                "Artisans / Chefs d'entreprise": emp.csp.artisans,
+                                "Agriculteurs": emp.csp.agriculteurs,
+                              }) as [string, number | null][]).map(([label, pct]) => pct != null && pct > 0 && (
+                                <div key={label} className="flex items-center gap-3">
+                                  <span className="text-xs text-slate-400 w-48 shrink-0">{label}</span>
+                                  <div className="flex-1 bg-slate-800 rounded-full h-2">
+                                    <div className="bg-violet-500 h-2 rounded-full" style={{ width: `${Math.min(pct, 100)}%` }} />
+                                  </div>
+                                  <span className="text-xs font-mono text-slate-300 w-12 text-right">{pct?.toFixed(1)}%</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {emp.diplomes && (
+                            <div className="mt-5">
+                              <h3 className="text-xs font-semibold text-slate-400 mb-3">Niveau de diplôme (pop. 15 ans + non scolarisée)</h3>
+                              <div className="space-y-2">
+                                {(Object.entries({
+                                  "Sans diplôme":  emp.diplomes.sans_diplome,
+                                  "BEPC / Brevet": emp.diplomes.bepc_brevet,
+                                  "CAP / BEP":     emp.diplomes.cap_bep,
+                                  "Bac":           emp.diplomes.bac,
+                                  "Bac +2":        emp.diplomes.bac2,
+                                  "Bac +3 ou +":   emp.diplomes.bac3_plus,
+                                }) as [string, number | null][]).map(([label, pct]) => pct != null && (
+                                  <div key={label} className="flex items-center gap-3">
+                                    <span className="text-xs text-slate-400 w-24 shrink-0">{label}</span>
+                                    <div className="flex-1 bg-slate-800 rounded-full h-2">
+                                      <div className="bg-emerald-500 h-2 rounded-full" style={{ width: `${Math.min(pct, 100)}%` }} />
+                                    </div>
+                                    <span className="text-xs font-mono text-slate-300 w-12 text-right">{pct?.toFixed(1)}%</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {!emp && !loadingInseeDemo && (
+                        <EmptyBlock label="Données emploi non disponibles — lancez la collecte emploi_social_rp." />
+                      )}
+
+                      {/* Navettes domicile-travail */}
+                      {pop.navettes && (
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                          <h2 className="text-sm font-bold text-white mb-1">Navettes domicile-travail</h2>
+                          <p className="text-xs text-slate-500 mb-4">Source : INSEE Recensement de la Population — mobilité professionnelle</p>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                            {pop.navettes.pct_travaillent_commune != null && (
+                              <div className="bg-slate-800 border border-slate-700 rounded-xl p-3">
+                                <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">Travaillent dans la commune</p>
+                                <p className="text-xl font-bold text-emerald-400">{pop.navettes.pct_travaillent_commune.toFixed(1)}%</p>
+                                <p className="text-xs text-slate-500 mt-0.5">des actifs résidents</p>
+                              </div>
+                            )}
+                            {pop.navettes.indice_autonomie != null && (
+                              <div className="bg-slate-800 border border-slate-700 rounded-xl p-3">
+                                <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">Indice d'autonomie</p>
+                                <p className="text-xl font-bold text-white">{pop.navettes.indice_autonomie.toFixed(0)}</p>
+                                <p className="text-xs text-slate-500 mt-0.5">emplois / 100 actifs résidents</p>
+                              </div>
+                            )}
+                            {pop.navettes.solde_navette != null && (
+                              <div className="bg-slate-800 border border-slate-700 rounded-xl p-3">
+                                <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">Solde navette</p>
+                                <p className={`text-xl font-bold ${pop.navettes.solde_navette >= 0 ? "text-emerald-400" : "text-orange-400"}`}>
+                                  {pop.navettes.solde_navette >= 0 ? "+" : ""}{formatNumber(Math.round(pop.navettes.solde_navette))}
+                                </p>
+                                <p className="text-xs text-slate-500 mt-0.5">entrants – sortants</p>
+                              </div>
+                            )}
+                          </div>
+                          {(pop.navettes.navetteurs_entrants != null || pop.navettes.navetteurs_sortants != null) && (
+                            <div className="grid grid-cols-2 gap-3">
+                              {pop.navettes.navetteurs_entrants != null && (
+                                <div className="flex items-center gap-3 bg-slate-800/60 rounded-lg p-3">
+                                  <div className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
+                                  <div>
+                                    <p className="text-xs text-slate-400">Navetteurs entrants</p>
+                                    <p className="text-sm font-semibold text-white">{formatNumber(pop.navettes.navetteurs_entrants)}</p>
+                                  </div>
+                                </div>
+                              )}
+                              {pop.navettes.navetteurs_sortants != null && (
+                                <div className="flex items-center gap-3 bg-slate-800/60 rounded-lg p-3">
+                                  <div className="w-2 h-2 rounded-full bg-orange-400 shrink-0" />
+                                  <div>
+                                    <p className="text-xs text-slate-400">Navetteurs sortants</p>
+                                    <p className="text-sm font-semibold text-white">{formatNumber(pop.navettes.navetteurs_sortants)}</p>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Logement */}
+                      {log && (
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+                          <h2 className="text-sm font-bold text-white mb-1">Logement</h2>
+                          <p className="text-xs text-slate-500 mb-4">Source : INSEE Recensement de la Population {log.annee}</p>
+
+                          {/* Type de logements */}
+                          {(log.types?.pct_maisons != null || log.types?.pct_appartements != null) && (
+                            <div className="mb-4">
+                              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2.5">Type de logements</p>
+                              <div className="space-y-2">
+                                {log.types?.pct_maisons != null && (
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-xs text-slate-400 w-28 shrink-0">Maisons</span>
+                                    <div className="flex-1 bg-slate-800 rounded-full h-2.5">
+                                      <div className="bg-amber-500 h-2.5 rounded-full" style={{ width: `${Math.min(log.types.pct_maisons, 100)}%` }} />
+                                    </div>
+                                    <span className="text-xs font-mono text-slate-300 w-12 text-right">{log.types.pct_maisons.toFixed(1)}%</span>
+                                  </div>
+                                )}
+                                {log.types?.pct_appartements != null && (
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-xs text-slate-400 w-28 shrink-0">Appartements</span>
+                                    <div className="flex-1 bg-slate-800 rounded-full h-2.5">
+                                      <div className="bg-blue-500 h-2.5 rounded-full" style={{ width: `${Math.min(log.types.pct_appartements, 100)}%` }} />
+                                    </div>
+                                    <span className="text-xs font-mono text-slate-300 w-12 text-right">{log.types.pct_appartements.toFixed(1)}%</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Statut d'occupation */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                            {log.statut_occupation?.proprietaires != null && <StatCard label="Propriétaires" value={log.statut_occupation.proprietaires?.toFixed(1)} unit="%" size="sm" />}
+                            {log.statut_occupation?.locataires_priv != null && <StatCard label="Loc. privés" value={log.statut_occupation.locataires_priv?.toFixed(1)} unit="%" size="sm" />}
+                            {log.statut_occupation?.locataires_hlm != null && <StatCard label="HLM" value={log.statut_occupation.locataires_hlm?.toFixed(1)} unit="%" size="sm" />}
+                            {log.surface_moyenne != null && <StatCard label="Surface moyenne" value={log.surface_moyenne?.toFixed(0)} unit="m²" size="sm" />}
+                          </div>
+
+                          {/* Parc de logements & mobilité résidentielle */}
+                          {(log.nb_logements?.logements_vacants != null || log.nb_logements?.residences_secondaires != null || log.mobilite?.emmenagement_moins_2ans != null) && (
+                            <div>
+                              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2.5">Parc & mobilité résidentielle</p>
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                {log.nb_logements?.logements_vacants != null && <StatCard label="Logements vacants" value={formatNumber(log.nb_logements.logements_vacants)} unit="" size="sm" />}
+                                {log.nb_logements?.residences_secondaires != null && <StatCard label="Rés. secondaires" value={formatNumber(log.nb_logements.residences_secondaires)} unit="" size="sm" />}
+                                {log.mobilite?.emmenagement_moins_2ans != null && <StatCard label="< 2 ans dans logement" value={log.mobilite.emmenagement_moins_2ans.toFixed(1)} unit="%" size="sm" />}
+                                {log.mobilite?.emmenagement_plus_10ans != null && <StatCard label="> 10 ans dans logement" value={log.mobilite.emmenagement_plus_10ans.toFixed(1)} unit="%" size="sm" />}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {!log && !loadingInseeDemo && (
+                        <EmptyBlock label="Données logement non disponibles — lancez la collecte logement_rp." />
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* ── Tab: Services ─────────────────────────────────────────────── */}
+            {tab === "services" && (
+              <div className="space-y-5">
+                {loadingInseeServices && <LoadingBlock label="Chargement données services…" />}
+                {!loadingInseeServices && !inseeServicesData?.equip?.nb_types && (
+                  <EmptyBlock label="Données équipements non disponibles — lancez la collecte bpe_equipements depuis l'admin." />
+                )}
+
+                {inseeServicesData?.equip?.annee != null && (
+                  <div className="flex items-center gap-2 text-xs text-slate-400 flex-wrap">
+                    <span className="px-2 py-1 rounded-md bg-slate-800 border border-slate-700">
+                      Équipements INSEE — millésime {inseeServicesData.equip.annee}
+                    </span>
+                    {inseeServicesData.equip.annee !== year && (
+                      <span className="flex items-center gap-1 text-amber-400">
+                        <AlertCircle size={12} />
+                        millésime le plus proche de {year}
+                      </span>
+                    )}
+                    {(inseeServicesData.equip.annees_disponibles as number[])?.length <= 1 && (
+                      <span className="flex items-center gap-1 text-slate-500">
+                        <AlertCircle size={12} />
+                        historique non disponible — données {inseeServicesData.equip.annee} uniquement
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {(inseeServicesData?.equip?.nb_types ?? 0) > 0 && (() => {
+                  const CAT_META: Record<string, { icon: string; label: string; short: string }> = {
+                    sante:     { icon: "🏥", label: "Santé",              short: "Santé"      },
+                    education: { icon: "📚", label: "Éducation",          short: "Éduc."      },
+                    commerce:  { icon: "🛒", label: "Commerces",          short: "Commerce"   },
+                    loisirs:   { icon: "🎭", label: "Loisirs & Sport",    short: "Loisirs"    },
+                    services:  { icon: "🏛️", label: "Services publics",   short: "Services"   },
+                    social:    { icon: "👶", label: "Social",             short: "Social"     },
+                    transports:{ icon: "🚉", label: "Transports",         short: "Transports" },
+                    tourisme:  { icon: "🏨", label: "Tourisme",           short: "Tourisme"   },
+                  };
+                  const equips = inseeServicesData!.equip.equipements as Record<string, Array<{libelle: string; nb: number; nb_pour_10k: number | null}>>;
+
+                  const radarData = Object.entries(equips).map(([cat, items]) => {
+                    const meta = CAT_META[cat] ?? { short: cat };
+                    const val = items.filter(e => e.nb_pour_10k != null).reduce((s, e) => s + (e.nb_pour_10k ?? 0), 0);
+                    return { subject: meta.short, value: Math.round(val * 10) / 10, total: items.reduce((s, e) => s + e.nb, 0), cat };
+                  }).filter(d => d.total > 0);
+
+                  return (
+                    <div className="space-y-5">
+                      {/* Radar profil */}
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                        <h3 className="text-sm font-semibold text-white mb-0.5">Profil d'équipement</h3>
+                        <p className="text-xs text-slate-500 mb-4">Densité par catégorie — équipements pour 10 000 habitants</p>
+                        <div className="flex gap-2 items-center">
+                          <div className="flex-1 min-w-0">
+                            <ResponsiveContainer width="100%" height={220}>
+                              <RadarChart data={radarData} margin={{ top: 8, right: 20, bottom: 8, left: 20 }}>
+                                <PolarGrid stroke="#1e293b" />
+                                <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                                <Radar dataKey="value" fill="#3b82f6" fillOpacity={0.2} stroke="#3b82f6" strokeWidth={2} dot={{ fill: '#3b82f6', r: 3 }} />
+                                <Tooltip
+                                  contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, fontSize: 11, color: '#f1f5f9' }}
+                                  formatter={(v: any, _: any, p: any) => [`${v} / 10k hab — ${p.payload.total} établ.`, '']}
+                                />
+                              </RadarChart>
+                            </ResponsiveContainer>
+                          </div>
+                          <div className="hidden sm:flex flex-col gap-2 shrink-0 w-32">
+                            {radarData.map(d => {
+                              const meta = CAT_META[d.cat] ?? { icon: "📦", short: d.cat };
+                              return (
+                                <div key={d.cat} className="flex items-center justify-between">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-sm">{meta.icon}</span>
+                                    <span className="text-xs text-slate-400">{meta.short}</span>
+                                  </div>
+                                  <span className="text-xs font-mono text-slate-300">{d.total}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Détail par catégorie — chips */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {Object.entries(equips).map(([cat, items]) => {
+                          const meta = CAT_META[cat] ?? { icon: "📦", label: cat };
+                          const sorted = [...items].sort((a, b) => b.nb - a.nb);
+                          const total = items.reduce((s, e) => s + e.nb, 0);
+                          const densiteTotal = items.filter(e => e.nb_pour_10k != null).reduce((s, e) => s + (e.nb_pour_10k ?? 0), 0);
+                          return (
+                            <div key={cat} className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-base">{meta.icon}</span>
+                                  <span className="text-sm font-semibold text-white">{meta.label}</span>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-sm font-bold text-white">{total}</div>
+                                  {densiteTotal > 0 && <div className="text-xs text-slate-500">{densiteTotal.toFixed(1)}/10k</div>}
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                {sorted.map(e => (
+                                  <span
+                                    key={e.libelle}
+                                    title={e.nb_pour_10k != null ? `${e.nb_pour_10k.toFixed(2)} / 10 000 hab` : undefined}
+                                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-xs text-slate-300"
+                                  >
+                                    {e.libelle}
+                                    <span className="font-bold text-white">{e.nb}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <p className="text-xs text-slate-600 text-center pb-2">
+                        Source : INSEE Base Permanente des Équipements (BPE) {inseeServicesData!.equip.annee}
+                      </p>
+                    </div>
+                  );
+                })()}
+
+                {inseeServicesData?.tourisme?.cap_totale_lits != null && (
+                  <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                    <h3 className="text-sm font-semibold text-white mb-4">🏖️ Capacité d'hébergement touristique</h3>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      <StatCard label="Capacité totale" value={formatNumber(inseeServicesData.tourisme.cap_totale_lits)} unit="lits" size="sm" />
+                      {inseeServicesData.tourisme.nb_hotels != null && <StatCard label="Hôtels" value={String(inseeServicesData.tourisme.nb_hotels)} size="sm" />}
+                      {inseeServicesData.tourisme.lits_pour_100hab != null && <StatCard label="Lits / 100 hab" value={inseeServicesData.tourisme.lits_pour_100hab?.toFixed(1)} size="sm" />}
+                    </div>
+                    <p className="text-xs text-slate-500 mt-3">Source : INSEE · millésime {inseeServicesData.tourisme.annee}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Tab: Économie locale ──────────────────────────────────────── */}
+            {tab === "insee_economie" && (
+              <div className="space-y-5">
+                {loadingInseeEcon && <LoadingBlock label="Chargement données économiques…" />}
+
+                {/* ── Marché du travail (RP emploi) ── */}
+                {(() => {
+                  const emp = inseeEconData?.emploi;
+                  if (!emp || emp.data === null) return null;
+
+                  const act = emp.activite ?? {};
+                  const csp = emp.csp ?? {};
+                  const gen = emp.genre ?? {};
+                  const inact = emp.inactivite ?? {};
+                  const empType = emp.emploi_type ?? {};
+                  const sects = emp.emploi_secteurs ?? {};
+
+                  // Répartition pop 15-64 pour graphique stacked
+                  const popTotal = (act.nb_actifs_occupes ?? 0) + (act.nb_chomeurs ?? 0) + (act.nb_inactifs ?? 0) || 1;
+                  const popParts = [
+                    { name: "Actifs occupés", value: act.nb_actifs_occupes ?? 0, fill: "#3b82f6" },
+                    { name: "Chômeurs",        value: act.nb_chomeurs ?? 0,       fill: "#f97316" },
+                    { name: "Inactifs",         value: act.nb_inactifs ?? 0,       fill: "#475569" },
+                  ];
+
+                  // Historique chômage/activité
+                  const hist = (emp.historique ?? []) as any[];
+
+                  // CSP barres horizontales
+                  const cspData = [
+                    { name: "Cadres",             pct: csp.cadres ?? 0 },
+                    { name: "Prof. interméd.",    pct: csp.prof_intermediaires ?? 0 },
+                    { name: "Employés",           pct: csp.employes ?? 0 },
+                    { name: "Ouvriers",           pct: csp.ouvriers ?? 0 },
+                    { name: "Artisans / chefs",   pct: csp.artisans ?? 0 },
+                    { name: "Agriculteurs",       pct: csp.agriculteurs ?? 0 },
+                  ].filter(d => (d.pct ?? 0) > 0).sort((a, b) => b.pct - a.pct);
+
+                  // Emploi par grand secteur (pie)
+                  const SECT_COLORS: Record<string, string> = {
+                    agriculture: "#84cc16", industrie: "#f59e0b",
+                    construction: "#f97316", commerce_services: "#3b82f6",
+                    public_edu_sante: "#8b5cf6",
+                  };
+                  const SECT_LABELS: Record<string, string> = {
+                    agriculture: "Agriculture", industrie: "Industrie",
+                    construction: "Construction", commerce_services: "Commerce & services",
+                    public_edu_sante: "Public, éducation, santé",
+                  };
+                  const sectData = Object.entries(sects)
+                    .map(([k, v]: any) => ({ name: SECT_LABELS[k] ?? k, value: v.nb ?? 0, pct: v.pct ?? 0, fill: SECT_COLORS[k] ?? "#64748b" }))
+                    .filter(d => d.value > 0)
+                    .sort((a, b) => b.value - a.value);
+
+                  // Genre
+                  const genreData = [
+                    { name: "Hommes", actifs: gen.h_nb_actifs ?? 0, taux: gen.h_taux_activite ?? 0, fill: "#3b82f6" },
+                    { name: "Femmes", actifs: gen.f_nb_actifs ?? 0, taux: gen.f_taux_activite ?? 0, fill: "#ec4899" },
+                  ];
+
+                  const TT = { contentStyle: { background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 11 }, labelStyle: { color: "#94a3b8", fontSize: 11 } };
+
+                  return (
+                    <>
+                      {/* Badge millésime */}
+                      <div className="flex items-center gap-2 text-xs text-slate-400">
+                        <span className="px-2 py-1 rounded-md bg-slate-800 border border-slate-700">
+                          Recensement de la Population — {emp.annee}
+                        </span>
+                        {emp.annee !== emp.annee_demandee && emp.annee_demandee != null && (
+                          <span className="flex items-center gap-1 text-amber-400">
+                            <AlertCircle size={12} />
+                            plus proche de {emp.annee_demandee}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* KPIs marché du travail */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        {act.taux_activite    != null && <StatCard label="Taux d'activité"      value={act.taux_activite.toFixed(1)}    unit="%" size="sm" higherIsBetter />}
+                        {act.taux_chomage     != null && <StatCard label="Taux de chômage"      value={act.taux_chomage.toFixed(1)}     unit="%" size="sm" />}
+                        {act.taux_chomage_15_24 != null && <StatCard label="Chômage 15–24 ans"  value={act.taux_chomage_15_24.toFixed(1)} unit="%" size="sm" />}
+                        {empType.pct_salaries != null && <StatCard label="Part salariés"        value={empType.pct_salaries.toFixed(1)} unit="%" size="sm" higherIsBetter />}
+                      </div>
+
+                      {/* Évolution + Répartition pop 15-64 */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {hist.length >= 2 && (
+                          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                            <h3 className="text-sm font-semibold text-white mb-0.5">Évolution du marché du travail</h3>
+                            <p className="text-xs text-slate-500 mb-4">Taux de chômage et d'activité — 15–64 ans</p>
+                            <ResponsiveContainer width="100%" height={170}>
+                              <LineChart data={hist} margin={{ left: -10, right: 8 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                                <XAxis dataKey="annee" tick={{ fontSize: 11, fill: "#94a3b8" }} />
+                                <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} unit="%" width={38} />
+                                <Tooltip {...TT} />
+                                <Legend wrapperStyle={{ fontSize: 11 }} />
+                                <Line type="monotone" dataKey="taux_activite" name="Activité" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
+                                <Line type="monotone" dataKey="taux_chomage"  name="Chômage"  stroke="#f97316" strokeWidth={2} dot={{ r: 3 }} />
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
+
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                          <h3 className="text-sm font-semibold text-white mb-0.5">Population 15–64 ans</h3>
+                          <p className="text-xs text-slate-500 mb-4">Répartition actifs occupés / chômeurs / inactifs · {emp.annee}</p>
+                          <ResponsiveContainer width="100%" height={170}>
+                            <PieChart>
+                              <Pie data={popParts} cx="50%" cy="50%" innerRadius={48} outerRadius={75} dataKey="value" strokeWidth={2} stroke="#0f172a">
+                                {popParts.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                              </Pie>
+                              <Tooltip {...TT} formatter={(v: any) => formatNumber(v)} />
+                              <Legend wrapperStyle={{ fontSize: 11 }} />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+
+                      {/* CSP + Genre */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {cspData.length > 0 && (
+                          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                            <h3 className="text-sm font-semibold text-white mb-0.5">Catégories socioprofessionnelles</h3>
+                            <p className="text-xs text-slate-500 mb-4">Part des actifs 15–64 ans · {emp.annee}</p>
+                            <ResponsiveContainer width="100%" height={170}>
+                              <BarChart data={cspData} layout="vertical" margin={{ left: 0, right: 30 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
+                                <XAxis type="number" tick={{ fontSize: 10, fill: "#94a3b8" }} unit="%" domain={[0, 'auto']} />
+                                <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: "#94a3b8" }} width={110} />
+                                <Tooltip {...TT} formatter={(v: any) => `${(v as number).toFixed(1)}%`} />
+                                <Bar dataKey="pct" fill="#8b5cf6" radius={[0, 3, 3, 0]}>
+                                  <LabelList dataKey="pct" position="right" formatter={(v: any) => `${(v as number).toFixed(1)}%`} style={{ fontSize: 10, fill: "#94a3b8" }} />
+                                </Bar>
+                              </BarChart>
+                            </ResponsiveContainer>
+                          </div>
+                        )}
+
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                          <h3 className="text-sm font-semibold text-white mb-0.5">Activité par genre</h3>
+                          <p className="text-xs text-slate-500 mb-4">Taux d'activité hommes / femmes · {emp.annee}</p>
+                          <ResponsiveContainer width="100%" height={100}>
+                            <BarChart data={genreData} margin={{ left: 8, right: 8 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                              <XAxis dataKey="name" tick={{ fontSize: 12, fill: "#94a3b8" }} />
+                              <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} unit="%" domain={[0, 100]} width={38} />
+                              <Tooltip {...TT} formatter={(v: any) => `${(v as number).toFixed(1)}%`} />
+                              <Bar dataKey="taux" name="Taux d'activité" radius={[4, 4, 0, 0]}>
+                                {genreData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                                <LabelList dataKey="taux" position="top" formatter={(v: any) => `${(v as number).toFixed(1)}%`} style={{ fontSize: 11, fill: "#e2e8f0" }} />
+                              </Bar>
+                            </BarChart>
+                          </ResponsiveContainer>
+                          <div className="mt-4 grid grid-cols-2 gap-3">
+                            <div className="text-center">
+                              <p className="text-[11px] text-slate-500">Hommes actifs</p>
+                              <p className="text-sm font-semibold text-blue-400">{formatNumber(gen.h_nb_actifs ?? 0)}</p>
+                            </div>
+                            <div className="text-center">
+                              <p className="text-[11px] text-slate-500">Femmes actives</p>
+                              <p className="text-sm font-semibold text-pink-400">{formatNumber(gen.f_nb_actifs ?? 0)}</p>
+                            </div>
+                          </div>
+                          {(inact.pct_retraites != null || inact.pct_etudiants != null) && (
+                            <div className="mt-4 pt-4 border-t border-slate-800">
+                              <p className="text-[11px] text-slate-500 mb-2">Inactifs — répartition</p>
+                              <div className="space-y-1.5">
+                                {inact.pct_retraites != null && (
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-slate-400 w-20">Retraités</span>
+                                    <div className="flex-1 bg-slate-800 rounded-full h-1.5">
+                                      <div className="bg-amber-500 h-1.5 rounded-full" style={{ width: `${inact.pct_retraites}%` }} />
+                                    </div>
+                                    <span className="text-xs text-slate-300 w-10 text-right">{inact.pct_retraites?.toFixed(0)}%</span>
+                                  </div>
+                                )}
+                                {inact.pct_etudiants != null && (
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs text-slate-400 w-20">Étudiants</span>
+                                    <div className="flex-1 bg-slate-800 rounded-full h-1.5">
+                                      <div className="bg-cyan-500 h-1.5 rounded-full" style={{ width: `${inact.pct_etudiants}%` }} />
+                                    </div>
+                                    <span className="text-xs text-slate-300 w-10 text-right">{inact.pct_etudiants?.toFixed(0)}%</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Emploi sur place par secteur */}
+                      {sectData.length > 0 && (
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                          <h3 className="text-sm font-semibold text-white mb-0.5">Emploi sur place par secteur</h3>
+                          <p className="text-xs text-slate-500 mb-4">Emplois situés sur la commune · {emp.annee} · {formatNumber(empType.nb_emplois_sur_place ?? 0)} emplois au total</p>
+                          <div className="flex gap-6 items-center">
+                            <div style={{ width: "40%", minWidth: 160 }}>
+                              <ResponsiveContainer width="100%" height={180}>
+                                <PieChart>
+                                  <Pie data={sectData} cx="50%" cy="50%" innerRadius={45} outerRadius={75} dataKey="value" strokeWidth={2} stroke="#0f172a">
+                                    {sectData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+                                  </Pie>
+                                  <Tooltip {...TT} formatter={(v: any) => formatNumber(v)} />
+                                </PieChart>
+                              </ResponsiveContainer>
+                            </div>
+                            <div className="flex-1 space-y-2">
+                              {sectData.map(d => (
+                                <div key={d.name}>
+                                  <div className="flex items-center justify-between mb-0.5">
+                                    <div className="flex items-center gap-1.5">
+                                      <div className="w-2 h-2 rounded-sm" style={{ background: d.fill }} />
+                                      <span className="text-xs text-slate-300">{d.name}</span>
+                                    </div>
+                                    <span className="text-xs font-mono text-slate-400">{d.pct?.toFixed(1)}%</span>
+                                  </div>
+                                  <div className="w-full bg-slate-800 rounded-full h-1">
+                                    <div className="h-1 rounded-full" style={{ width: `${d.pct}%`, background: d.fill }} />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Type d'emploi */}
+                      {empType.pct_salaries != null && (
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                          <h3 className="text-sm font-semibold text-white mb-4">Type d'emploi · {emp.annee}</h3>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                            {empType.pct_salaries != null && (
+                              <div className="text-center">
+                                <p className="text-2xl font-bold text-blue-400">{empType.pct_salaries.toFixed(1)}<span className="text-sm">%</span></p>
+                                <p className="text-xs text-slate-500 mt-1">Salariés</p>
+                              </div>
+                            )}
+                            {empType.pct_non_salaries != null && (
+                              <div className="text-center">
+                                <p className="text-2xl font-bold text-violet-400">{empType.pct_non_salaries.toFixed(1)}<span className="text-sm">%</span></p>
+                                <p className="text-xs text-slate-500 mt-1">Non-salariés</p>
+                              </div>
+                            )}
+                            {empType.pct_sal_tp != null && (
+                              <div className="text-center">
+                                <p className="text-2xl font-bold text-amber-400">{empType.pct_sal_tp.toFixed(1)}<span className="text-sm">%</span></p>
+                                <p className="text-xs text-slate-500 mt-1">Temps partiel (parmi salariés)</p>
+                              </div>
+                            )}
+                          </div>
+                          <div className="mt-4 flex h-3 rounded-full overflow-hidden gap-px">
+                            <div className="bg-blue-500 transition-all" style={{ width: `${empType.pct_salaries ?? 0}%` }} />
+                            <div className="bg-violet-500 transition-all" style={{ width: `${empType.pct_non_salaries ?? 0}%` }} />
+                          </div>
+                          <div className="flex gap-4 mt-2">
+                            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-blue-500" /><span className="text-xs text-slate-500">Salariés</span></div>
+                            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-violet-500" /><span className="text-xs text-slate-500">Non-salariés</span></div>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+
+                {/* ── Tissu d'entreprises SIRENE ── */}
+                {inseeEconData?.etablissements?.total_actifs != null && (() => {
+                  type Sizes = { "0sal": number; "1_9": number; "10_49": number; "50plus": number };
+                  type Sec = { section: string; libelle: string; nb_actifs: number; pct: number; creations_an: number; taille: Sizes };
+                  const secs = inseeEconData.etablissements.sections as Sec[];
+                  const totalActifs    = inseeEconData.etablissements.total_actifs as number;
+                  const totalCreations = secs.reduce((s, r) => s + (r.creations_an ?? 0), 0);
+                  const sorted = [...secs].filter(s => s.nb_actifs > 0).sort((a, b) => b.nb_actifs - a.nb_actifs);
+                  const dominant = sorted[0];
+
+                  const tot0  = secs.reduce((s, r) => s + (r.taille?.["0sal"]   || 0), 0);
+                  const tot19 = secs.reduce((s, r) => s + (r.taille?.["1_9"]    || 0), 0);
+                  const tot49 = secs.reduce((s, r) => s + (r.taille?.["10_49"]  || 0), 0);
+                  const tot50 = secs.reduce((s, r) => s + (r.taille?.["50plus"] || 0), 0);
+                  const totalSize = tot0 + tot19 + tot49 + tot50 || 1;
+                  const sizeBands = [
+                    { nb: tot0,  fill: "#3b82f6", label: "Sans salarié"   },
+                    { nb: tot19, fill: "#8b5cf6", label: "1–9 sal."       },
+                    { nb: tot49, fill: "#10b981", label: "10–49 sal."     },
+                    { nb: tot50, fill: "#f59e0b", label: "50+ sal."       },
+                  ];
+                  const PIE_COLORS = ["#3b82f6","#8b5cf6","#10b981","#f59e0b","#ef4444","#06b6d4","#f97316","#84cc16","#ec4899","#14b8a6","#a855f7","#fb923c","#6366f1","#22c55e","#e11d48","#0ea5e9"];
+                  const pieData = sorted.map(s => ({ name: s.libelle.length > 24 ? s.libelle.slice(0, 22) + "…" : s.libelle, value: s.nb_actifs }));
+                  const dynamiques = [...secs].filter(s => s.nb_actifs >= 10 && (s.creations_an ?? 0) > 0).map(s => ({ ...s, taux: (s.creations_an / s.nb_actifs) * 100 })).sort((a, b) => b.taux - a.taux).slice(0, 5);
+                  const TT = { contentStyle: { background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 11 }, labelStyle: { color: "#94a3b8", fontSize: 11 } };
+
+                  return (
+                    <>
+                      <div className="flex items-center gap-3 mt-2">
+                        <div className="flex-1 border-t border-slate-800" />
+                        <span className="text-xs text-slate-500 shrink-0">Tissu d'entreprises — SIRENE</span>
+                        <div className="flex-1 border-t border-slate-800" />
+                        {inseeEconData.etablissements.annee_demandee != null && inseeEconData.etablissements.annee !== inseeEconData.etablissements.annee_demandee && (
+                          <span className="flex items-center gap-1 text-xs text-amber-400 shrink-0">
+                            <AlertCircle size={11} />
+                            {inseeEconData.etablissements.annee}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* KPIs */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <StatCard label="Établissements actifs" value={formatNumber(totalActifs)} size="sm" />
+                        <StatCard label="Créations / an" value={formatNumber(totalCreations)} size="sm" />
+                        <StatCard label="Taux de renouvellement" value={totalActifs > 0 ? ((totalCreations / totalActifs) * 100).toFixed(1) : "–"} unit="%" size="sm" />
+                        {dominant && <StatCard label="Secteur dominant" value={dominant.libelle.length > 16 ? dominant.libelle.slice(0, 14) + "…" : dominant.libelle} size="sm" />}
+                      </div>
+
+                      {/* Donut NAF + liste */}
+                      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                        <h3 className="text-sm font-semibold text-white mb-0.5">Répartition par secteur NAF</h3>
+                        <p className="text-xs text-slate-500 mb-4">SIRENE · {inseeEconData.etablissements.annee}</p>
+                        <div className="flex gap-4 items-start">
+                          <div className="shrink-0" style={{ width: "45%" }}>
+                            <ResponsiveContainer width="100%" height={190}>
+                              <PieChart>
+                                <Pie data={pieData} cx="50%" cy="50%" innerRadius={52} outerRadius={82} dataKey="value" strokeWidth={2} stroke="#0f172a">
+                                  {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                                </Pie>
+                                <Tooltip {...TT} formatter={(v: any) => formatNumber(v as number) + " établ."} />
+                              </PieChart>
+                            </ResponsiveContainer>
+                          </div>
+                          <div className="flex-1 min-w-0 space-y-1.5">
+                            {sorted.slice(0, 12).map((s, i) => (
+                              <div key={s.section} className="flex items-center gap-1.5">
+                                <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                                <span className="text-xs text-slate-400 flex-1 truncate">{s.libelle}</span>
+                                <span className="text-xs font-mono text-slate-300 shrink-0">{formatNumber(s.nb_actifs)}</span>
+                                {(s.creations_an ?? 0) > 0 && <span className="text-xs text-emerald-500 shrink-0 w-10 text-right">+{s.creations_an}</span>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Taille + Dynamisme */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                          <h3 className="text-sm font-semibold text-white mb-4">Taille des établissements</h3>
+                          <div className="flex h-4 rounded-lg overflow-hidden gap-px mb-4">
+                            {sizeBands.map(({ nb, fill }) => nb > 0 ? <div key={fill} style={{ width: `${nb / totalSize * 100}%`, background: fill }} /> : null)}
+                          </div>
+                          <div className="grid grid-cols-2 gap-y-2 gap-x-3">
+                            {sizeBands.map(({ nb, fill, label }) => (
+                              <div key={label} className="flex items-center gap-2">
+                                <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: fill }} />
+                                <span className="text-xs text-slate-400 flex-1">{label}</span>
+                                <span className="text-xs font-mono text-white">{formatNumber(nb)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {dynamiques.length > 0 && (
+                          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
+                            <h3 className="text-sm font-semibold text-white mb-0.5">Secteurs les plus dynamiques</h3>
+                            <p className="text-xs text-slate-500 mb-4">Taux de renouvellement (créations / stock)</p>
+                            <div className="space-y-3">
+                              {dynamiques.map(s => (
+                                <div key={s.section}>
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className="text-xs text-slate-300 truncate flex-1 mr-2">{s.libelle}</span>
+                                    <span className="text-xs font-bold text-emerald-400 shrink-0">{s.taux.toFixed(1)}%</span>
+                                  </div>
+                                  <div className="w-full bg-slate-800 rounded-full h-1.5">
+                                    <div className="h-1.5 rounded-full bg-emerald-500" style={{ width: `${Math.min(s.taux, 40) / 40 * 100}%` }} />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  );
+                })()}
+
+                {!loadingInseeEcon && !inseeEconData?.etablissements && !inseeEconData?.emploi && (
+                  <EmptyBlock label="Données économiques non disponibles — lancez la collecte sirene_etablissements et rp_emploi_actif." />
                 )}
               </div>
             )}
