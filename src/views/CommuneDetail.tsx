@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect, useLayoutEffect, useRef, useImperativeHandle, forwardRef } from "react";
+import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef } from "react";
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -1549,15 +1549,14 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
     btn?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
   }, [tab]);
   // Init + écoute du scroll pour afficher/cacher les flèches
-  useLayoutEffect(() => {
+  useEffect(() => {
     const el = tabsNavRef.current;
     if (!el) return;
-    // rAF : on attend que le navigateur ait calculé les dimensions réelles
-    const raf = requestAnimationFrame(updateScrollState);
+    updateScrollState();
     el.addEventListener("scroll", updateScrollState, { passive: true });
     const ro = new ResizeObserver(updateScrollState);
     ro.observe(el);
-    return () => { cancelAnimationFrame(raf); el.removeEventListener("scroll", updateScrollState); ro.disconnect(); };
+    return () => { el.removeEventListener("scroll", updateScrollState); ro.disconnect(); };
   }, [codeInsee]);
   const [chartMode, setChartMode] = useState<"eph" | "montant">("eph");
   const [selectedElectionId, setSelectedElectionId] = useState<string | null>(null);
