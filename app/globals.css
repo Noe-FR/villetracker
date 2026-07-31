@@ -14,6 +14,24 @@
   }
 }
 
+/* Recharts dark theme overrides */
+.recharts-default-tooltip {
+  background-color: #0f172a !important;
+  border-color: #1e293b !important;
+  color: #e2e8f0 !important;
+}
+.recharts-tooltip-item {
+  color: #e2e8f0 !important;
+}
+.recharts-tooltip-label {
+  color: #94a3b8 !important;
+}
+/* Cursor rectangle on hover — default is #ccc (white-looking on dark bg) */
+.recharts-tooltip-cursor {
+  fill: #1e293b !important;
+  fill-opacity: 0.5 !important;
+}
+
 /* Leaflet tooltip */
 .map-tooltip {
   background: white;

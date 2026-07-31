@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef } from "react";
+import React, { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from "react";
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -1521,16 +1521,30 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
   const effImmo    = Math.min(year, MAX_IMMO);
   const [tab, setTab] = useState<Tab>("finances");
   const tabsNavRef = useRef<HTMLElement>(null);
+  const navCleanupRef = useRef<(() => void) | null>(null);
   const [canScrollLeft,  setCanScrollLeft]  = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const domTom = isLimitedTerritory(codeInsee ?? "");
 
-  const updateScrollState = () => {
+  const updateScrollState = useCallback(() => {
     const el = tabsNavRef.current;
     if (!el) return;
     setCanScrollLeft(el.scrollLeft > 4);
     setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
-  };
+  }, []);
+
+  // Callback ref: fires when the nav element mounts or unmounts (even inside conditional rendering)
+  const setTabsNav = useCallback((el: HTMLElement | null) => {
+    navCleanupRef.current?.();
+    navCleanupRef.current = null;
+    tabsNavRef.current = el;
+    if (!el) { setCanScrollLeft(false); setCanScrollRight(false); return; }
+    requestAnimationFrame(updateScrollState);
+    el.addEventListener("scroll", updateScrollState, { passive: true });
+    const ro = new ResizeObserver(updateScrollState);
+    ro.observe(el);
+    navCleanupRef.current = () => { el.removeEventListener("scroll", updateScrollState); ro.disconnect(); };
+  }, [updateScrollState]);
 
   const scrollTabs = (dir: "left" | "right") => {
     tabsNavRef.current?.scrollBy({ left: dir === "right" ? 160 : -160, behavior: "smooth" });
@@ -1548,16 +1562,6 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
     const btn = tabsNavRef.current.querySelector<HTMLElement>(`[data-tab="${tab}"]`);
     btn?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
   }, [tab]);
-  // Init + écoute du scroll pour afficher/cacher les flèches
-  useEffect(() => {
-    const el = tabsNavRef.current;
-    if (!el) return;
-    updateScrollState();
-    el.addEventListener("scroll", updateScrollState, { passive: true });
-    const ro = new ResizeObserver(updateScrollState);
-    ro.observe(el);
-    return () => { el.removeEventListener("scroll", updateScrollState); ro.disconnect(); };
-  }, [codeInsee]);
   const [chartMode, setChartMode] = useState<"eph" | "montant">("eph");
   const [selectedElectionId, setSelectedElectionId] = useState<string | null>(null);
   const scoreDetailRef = useRef<HTMLDivElement>(null);
@@ -1984,8 +1988,8 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                 </button>
               )}
               <nav
-                ref={tabsNavRef}
-                className="flex gap-1 overflow-x-auto px-3 py-2 [&::-webkit-scrollbar]:hidden w-full"
+                ref={setTabsNav}
+                className="flex gap-1 overflow-x-auto px-3 py-2 [&::-webkit-scrollbar]:hidden w-full min-w-0"
                 style={{ scrollbarWidth: "none" }}
               >
                 {TABS.map(({ id, label, icon: Icon, metroOnly }) => {
@@ -2241,8 +2245,9 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                           }}
                         />
                         <Tooltip
-                          contentStyle={{ background: "#1e293b", border: "1px solid #334155", borderRadius: 8, fontSize: 12, color: "#e2e8f0" }}
+                          contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: 8, fontSize: 12, color: "#e2e8f0" }}
                           labelStyle={{ color: "#cbd5e1" }}
+                          itemStyle={{ color: "#e2e8f0" }}
                           formatter={(value: unknown, _: string, props: any) => {
                             const row = props.payload;
                             const color = NOTE_COLOR[row.note] ?? "#94a3b8";
@@ -2827,6 +2832,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                                 <Tooltip
                                   contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #334155", borderRadius: 8, fontSize: 12, color: "#e2e8f0" }}
                                   labelStyle={{ color: "#94a3b8" }}
+                                  itemStyle={{ color: "#e2e8f0" }}
                                   formatter={(v: number) => [`${v.toFixed(decimals)} ${sel.unit}`, sel.label]}
                                 />
                                 {/* ligne pointillée dans les trous */}
@@ -3088,6 +3094,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                           <Tooltip
                             contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: 8, fontSize: 12, color: "#e2e8f0" }}
                             labelStyle={{ color: "#e2e8f0", fontWeight: 600 }}
+                            itemStyle={{ color: "#e2e8f0" }}
                             formatter={(v: number, name: string) => [
                               `${new Intl.NumberFormat("fr-FR").format(v)} €/m²`,
                               name === "maisons" ? "Maisons" : "Appartements",
@@ -3560,8 +3567,9 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                             <XAxis dataKey="annee" tick={{ fontSize: 11, fill: "#94a3b8" }} interval={9} />
                             <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} tickFormatter={(v) => formatNumber(v)} width={70} />
                             <Tooltip
-                              contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, color: "#e2e8f0" }}
+                              contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, color: "#e2e8f0" }}
                               labelStyle={{ color: "#94a3b8", fontSize: 12 }}
+                              itemStyle={{ color: "#e2e8f0" }}
                               formatter={(v: any) => [formatNumber(v), "habitants"]}
                             />
                             <Line type="monotone" dataKey="population" stroke="#3b82f6" strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
@@ -3621,7 +3629,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                                   <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                                   <XAxis dataKey="annee" tick={{ fontSize: 11, fill: "#94a3b8" }} />
                                   <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} width={55} tickFormatter={(v) => `${(v/1000).toFixed(0)}k€`} />
-                                  <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, color: "#e2e8f0" }} labelStyle={{ color: "#94a3b8", fontSize: 12 }} formatter={(v: any) => [formatEuro(v), "médian/UC/an"]} />
+                                  <Tooltip contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, color: "#e2e8f0" }} labelStyle={{ color: "#94a3b8", fontSize: 12 }} itemStyle={{ color: "#e2e8f0" }} formatter={(v: any) => [formatEuro(v), "médian/UC/an"]} />
                                   <Line type="monotone" dataKey="revenu_median" stroke="#10b981" strokeWidth={2.5} dot={{ r: 3 }} />
                                 </LineChart>
                               </ResponsiveContainer>
@@ -3659,7 +3667,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                                   <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                                   <XAxis dataKey="annee" tick={{ fontSize: 11, fill: "#94a3b8" }} />
                                   <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} width={35} unit="%" />
-                                  <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, color: "#e2e8f0" }} labelStyle={{ color: "#94a3b8", fontSize: 12 }} />
+                                  <Tooltip contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, color: "#e2e8f0" }} labelStyle={{ color: "#94a3b8", fontSize: 12 }} itemStyle={{ color: "#e2e8f0" }} />
                                   <Legend wrapperStyle={{ fontSize: 11 }} />
                                   <Line type="monotone" dataKey="taux_chomage" name="Chômage" stroke="#f97316" strokeWidth={2} dot={{ r: 3 }} />
                                   <Line type="monotone" dataKey="pct_cadres" name="Cadres" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
@@ -3897,7 +3905,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                                 <PolarAngleAxis dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 11 }} />
                                 <Radar dataKey="value" fill="#3b82f6" fillOpacity={0.2} stroke="#3b82f6" strokeWidth={2} dot={{ fill: '#3b82f6', r: 3 }} />
                                 <Tooltip
-                                  contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, fontSize: 11, color: '#f1f5f9' }}
+                                  contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, fontSize: 11, color: '#f1f5f9' }}
                                   formatter={(v: any, _: any, p: any) => [`${v} / 10k hab — ${p.payload.total} établ.`, '']}
                                 />
                               </RadarChart>
@@ -4037,7 +4045,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                     { name: "Femmes", actifs: gen.f_nb_actifs ?? 0, taux: gen.f_taux_activite ?? 0, fill: "#ec4899" },
                   ];
 
-                  const TT = { contentStyle: { background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 11, color: "#e2e8f0" }, labelStyle: { color: "#94a3b8", fontSize: 11 } };
+                  const TT = { contentStyle: { backgroundColor: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 11, color: "#e2e8f0" }, labelStyle: { color: "#94a3b8", fontSize: 11 }, itemStyle: { color: "#e2e8f0" } };
 
                   return (
                     <>
@@ -4268,7 +4276,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                   const PIE_COLORS = ["#3b82f6","#8b5cf6","#10b981","#f59e0b","#ef4444","#06b6d4","#f97316","#84cc16","#ec4899","#14b8a6","#a855f7","#fb923c","#6366f1","#22c55e","#e11d48","#0ea5e9"];
                   const pieData = sorted.map(s => ({ name: s.libelle.length > 24 ? s.libelle.slice(0, 22) + "…" : s.libelle, value: s.nb_actifs }));
                   const dynamiques = [...secs].filter(s => s.nb_actifs >= 10 && (s.creations_an ?? 0) > 0).map(s => ({ ...s, taux: (s.creations_an / s.nb_actifs) * 100 })).sort((a, b) => b.taux - a.taux).slice(0, 5);
-                  const TT = { contentStyle: { background: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 11, color: "#e2e8f0" }, labelStyle: { color: "#94a3b8", fontSize: 11 } };
+                  const TT = { contentStyle: { backgroundColor: "#0f172a", border: "1px solid #1e293b", borderRadius: 8, fontSize: 11, color: "#e2e8f0" }, labelStyle: { color: "#94a3b8", fontSize: 11 }, itemStyle: { color: "#e2e8f0" } };
 
                   return (
                     <>
