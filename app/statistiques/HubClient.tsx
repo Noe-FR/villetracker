@@ -178,7 +178,7 @@ export function HubClient({ hub, evolutionFinances, notesDistribution }: Props) 
                 <XAxis dataKey="note" tick={{ fill: "#94a3b8", fontSize: 12 }} />
                 <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => v.toLocaleString("fr-FR")} />
                 <Tooltip
-                  contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0" }}
+                  contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0" }}
                   itemStyle={{ color: "#e2e8f0" }}
                   labelStyle={{ color: "#e2e8f0" }}
                   formatter={(v: any) => [v.toLocaleString("fr-FR"), "communes"]}
@@ -210,7 +210,7 @@ export function HubClient({ hub, evolutionFinances, notesDistribution }: Props) 
                 <XAxis dataKey="annee" tick={{ fill: "#94a3b8", fontSize: 12 }} />
                 <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => `${v} €`} />
                 <Tooltip
-                  contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0" }}
+                  contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0" }}
                   itemStyle={{ color: "#e2e8f0" }}
                   labelStyle={{ color: "#e2e8f0" }}
                   formatter={(v: any, name: string) => [`${v?.toLocaleString("fr-FR")} €`, name]}

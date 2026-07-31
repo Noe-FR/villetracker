@@ -81,7 +81,7 @@ function BlocContent({ bloc, data }: { bloc: string; data: any }) {
 
 const chartContainer = "bg-slate-900 border border-slate-800 rounded-xl p-4";
 const chartTitle = "text-sm font-medium text-slate-300 mb-3";
-const tooltipStyle = { contentStyle: { background: "#0f172a", border: "1px solid #334155", borderRadius: 8 }, labelStyle: { color: "#e2e8f0" } };
+const tooltipStyle = { contentStyle: { backgroundColor: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0" }, labelStyle: { color: "#e2e8f0" }, itemStyle: { color: "#e2e8f0" } };
 
 const ENERGIE_CATEGORIE: Record<string, string> = {
   RES: "Résidentiel",
