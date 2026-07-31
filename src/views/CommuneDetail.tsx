@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef } from "react";
+import React, { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from "react";
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -1521,16 +1521,30 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
   const effImmo    = Math.min(year, MAX_IMMO);
   const [tab, setTab] = useState<Tab>("finances");
   const tabsNavRef = useRef<HTMLElement>(null);
+  const navCleanupRef = useRef<(() => void) | null>(null);
   const [canScrollLeft,  setCanScrollLeft]  = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const domTom = isLimitedTerritory(codeInsee ?? "");
 
-  const updateScrollState = () => {
+  const updateScrollState = useCallback(() => {
     const el = tabsNavRef.current;
     if (!el) return;
     setCanScrollLeft(el.scrollLeft > 4);
     setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
-  };
+  }, []);
+
+  // Callback ref: fires when the nav element mounts or unmounts (even inside conditional rendering)
+  const setTabsNav = useCallback((el: HTMLElement | null) => {
+    navCleanupRef.current?.();
+    navCleanupRef.current = null;
+    tabsNavRef.current = el;
+    if (!el) { setCanScrollLeft(false); setCanScrollRight(false); return; }
+    requestAnimationFrame(updateScrollState);
+    el.addEventListener("scroll", updateScrollState, { passive: true });
+    const ro = new ResizeObserver(updateScrollState);
+    ro.observe(el);
+    navCleanupRef.current = () => { el.removeEventListener("scroll", updateScrollState); ro.disconnect(); };
+  }, [updateScrollState]);
 
   const scrollTabs = (dir: "left" | "right") => {
     tabsNavRef.current?.scrollBy({ left: dir === "right" ? 160 : -160, behavior: "smooth" });
@@ -1548,16 +1562,6 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
     const btn = tabsNavRef.current.querySelector<HTMLElement>(`[data-tab="${tab}"]`);
     btn?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
   }, [tab]);
-  // Init + écoute du scroll pour afficher/cacher les flèches
-  useEffect(() => {
-    const el = tabsNavRef.current;
-    if (!el) return;
-    updateScrollState();
-    el.addEventListener("scroll", updateScrollState, { passive: true });
-    const ro = new ResizeObserver(updateScrollState);
-    ro.observe(el);
-    return () => { el.removeEventListener("scroll", updateScrollState); ro.disconnect(); };
-  }, [codeInsee]);
   const [chartMode, setChartMode] = useState<"eph" | "montant">("eph");
   const [selectedElectionId, setSelectedElectionId] = useState<string | null>(null);
   const scoreDetailRef = useRef<HTMLDivElement>(null);
@@ -1984,7 +1988,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                 </button>
               )}
               <nav
-                ref={tabsNavRef}
+                ref={setTabsNav}
                 className="flex gap-1 overflow-x-auto px-3 py-2 [&::-webkit-scrollbar]:hidden w-full min-w-0"
                 style={{ scrollbarWidth: "none" }}
               >
