@@ -160,6 +160,7 @@ export function CartesClient() {
                     />
                     <Tooltip
                       contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0" }}
+                      itemStyle={{ color: "#e2e8f0" }}
                       formatter={(v: any) => [`${v?.toLocaleString("fr-FR")} ${data.unite}`, data.label]}
                     />
                     <Bar dataKey="valeur" fill="#22c55e" radius={[0, 3, 3, 0]} />
@@ -220,6 +221,7 @@ function DistributionChart({ data, unite }: { data: [string, number][]; unite: s
         <YAxis tick={{ fill: "#94a3b8", fontSize: 10 }} tickFormatter={(v) => v.toLocaleString("fr-FR")} />
         <Tooltip
           contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0" }}
+                      itemStyle={{ color: "#e2e8f0" }}
           formatter={(v: any) => [v.toLocaleString("fr-FR"), "communes"]}
           labelFormatter={(v: any) => `≥ ${Number(v).toLocaleString("fr-FR")} ${unite}`}
         />
