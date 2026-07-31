@@ -194,7 +194,7 @@ export function PolitiqueClient({ resume, statsFamille, evolution, fun, records,
                     <XAxis type="number" domain={[0, 100]} tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => `${v} %`} />
                     <YAxis type="category" dataKey="famille" tick={{ fill: "#94a3b8", fontSize: 11 }} width={105} />
                     <Tooltip
-                      contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8 }}
+                      contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0" }}
                       formatter={(v: any) => [`${v} %`, "Taux de participation"]}
                     />
                     <Bar dataKey="taux_participation" radius={[0, 4, 4, 0]}>
@@ -280,7 +280,7 @@ export function PolitiqueClient({ resume, statsFamille, evolution, fun, records,
                       <XAxis dataKey="annee" tick={{ fill: "#94a3b8", fontSize: 12 }} />
                       <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => `${v} %`} domain={[0, "auto"]} />
                       <Tooltip
-                        contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8 }}
+                        contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0" }}
                         formatter={(v: any, name: string) => [`${v} %`, name]}
                       />
                       <Legend wrapperStyle={{ color: "#94a3b8", fontSize: 11 }} />
@@ -318,7 +318,7 @@ export function PolitiqueClient({ resume, statsFamille, evolution, fun, records,
                     <XAxis dataKey="annee" tick={{ fill: "#94a3b8", fontSize: 12 }} />
                     <YAxis domain={[0, 100]} tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => `${v} %`} />
                     <Tooltip
-                      contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8 }}
+                      contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0" }}
                       formatter={(v: any, name: string) => [`${v} %`, name]}
                     />
                     <Legend wrapperStyle={{ color: "#94a3b8", fontSize: 11 }} />
@@ -707,7 +707,7 @@ export function PolitiqueClient({ resume, statsFamille, evolution, fun, records,
                     <XAxis dataKey="annee" tick={{ fill: "#94a3b8", fontSize: 12 }} />
                     <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => `${v} %`} domain={[0, 50]} />
                     <Tooltip
-                      contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8 }}
+                      contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0" }}
                       formatter={(v: any, name: string) => [`${v} %`, name]}
                     />
                     <Legend wrapperStyle={{ color: "#94a3b8", fontSize: 11 }} />
@@ -748,7 +748,7 @@ export function PolitiqueClient({ resume, statsFamille, evolution, fun, records,
                       />
                       <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => `${v} %`} domain={[0, 50]} />
                       <Tooltip
-                        contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8 }}
+                        contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0" }}
                         formatter={(v: any, name: string) => [v != null ? `${v} %` : "—", name]}
                       />
                       <Legend wrapperStyle={{ color: "#94a3b8", fontSize: 11, paddingTop: 8 }} />
@@ -808,7 +808,7 @@ export function PolitiqueClient({ resume, statsFamille, evolution, fun, records,
                     <XAxis type="number" tick={{ fill: "#94a3b8", fontSize: 11 }} />
                     <YAxis type="category" dataKey="groupe" tick={{ fill: "#94a3b8", fontSize: 11 }} width={125} />
                     <Tooltip
-                      contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8 }}
+                      contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0" }}
                       formatter={(v: any) => [v.toLocaleString("fr-FR"), "maires"]}
                     />
                     <Bar dataKey="nb" fill="#3b82f6" radius={[0, 4, 4, 0]} />
@@ -980,7 +980,7 @@ export function PolitiqueClient({ resume, statsFamille, evolution, fun, records,
                   <XAxis type="number" domain={[0, 100]} tick={{ fill: "#94a3b8", fontSize: 11 }} />
                   <YAxis type="category" dataKey="famille" tick={{ fill: "#94a3b8", fontSize: 11 }} width={105} />
                   <Tooltip
-                    contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8 }}
+                    contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0" }}
                     formatter={(v: any) => [v, "Score moyen"]}
                   />
                   <Bar dataKey="score_moyen" radius={[0, 4, 4, 0]} label={{ position: "right", fill: "#94a3b8", fontSize: 11 }}>
@@ -1111,7 +1111,7 @@ export function PolitiqueClient({ resume, statsFamille, evolution, fun, records,
                     <XAxis type="number" tick={{ fill: "#94a3b8", fontSize: 10 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                     <YAxis type="category" dataKey="famille" tick={{ fill: "#94a3b8", fontSize: 10 }} width={105} />
                     <Tooltip
-                      contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8 }}
+                      contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0" }}
                       formatter={(v: any) => [`${Math.round(v).toLocaleString("fr-FR")} €/m²`, "Prix m²"]}
                     />
                     <Bar dataKey="prix_m2_moyen" radius={[0, 4, 4, 0]}>
@@ -1144,7 +1144,7 @@ export function PolitiqueClient({ resume, statsFamille, evolution, fun, records,
                     <XAxis type="number" domain={[0, 60]} tick={{ fill: "#94a3b8", fontSize: 10 }} tickFormatter={(v) => `${v} %`} />
                     <YAxis type="category" dataKey="famille" tick={{ fill: "#94a3b8", fontSize: 10 }} width={105} />
                     <Tooltip
-                      contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8 }}
+                      contentStyle={{ background: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0" }}
                       formatter={(v: any) => [`${v} %`, "Abstention"]}
                     />
                     <Bar dataKey="abstention_pct" radius={[0, 4, 4, 0]}>
