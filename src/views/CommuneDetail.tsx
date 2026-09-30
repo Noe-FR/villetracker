@@ -106,9 +106,7 @@ function CommuneMiniMap({ codeInsee }: { codeInsee: string }) {
       attributionControl: false,
       keyboard: false,
     });
-    L.tileLayer(
-      "https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png"
-    ).addTo(map);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
     map.setView([46.5, 2.3], 5);
     mapRef.current = map;
     return () => {
@@ -227,8 +225,8 @@ const DvfSalesMap = forwardRef<DvfSalesMapHandle, { pointsData: { mode: string; 
       scrollWheelZoom: false,
       attributionControl: true,
     });
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-      attribution: '© <a href="https://www.openstreetmap.org/">OSM</a> © <a href="https://carto.com/">CARTO</a>',
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributeurs',
       maxZoom: 19,
     }).addTo(map);
     map.setView([46.5, 2.3], 5);

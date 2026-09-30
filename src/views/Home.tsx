@@ -171,8 +171,8 @@ function DomTomInset({
       dragging: false, scrollWheelZoom: false, doubleClickZoom: false,
       touchZoom: false, boxZoom: false, keyboard: false,
     });
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-      subdomains: "abcd", maxZoom: 19,
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
     }).addTo(map);
     map.setView(def.center, def.zoom);
     return () => { map.remove(); };
@@ -236,9 +236,9 @@ function DomTomExpanded({
       dragging: true, scrollWheelZoom: true, doubleClickZoom: true, touchZoom: true,
     });
     map.zoomControl.setPosition("bottomright");
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-      attribution: '&copy; <a href="https://carto.com/attributions">CARTO</a>',
-      subdomains: "abcd", maxZoom: 19,
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributeurs',
+      maxZoom: 19,
     }).addTo(map);
     map.setView(def.center, def.zoom);
     mapRef.current = map;
@@ -346,9 +346,7 @@ function FranceMiniInset({ onClick }: { onClick: () => void }) {
       dragging: false, scrollWheelZoom: false, doubleClickZoom: false,
       touchZoom: false, boxZoom: false, keyboard: false,
     });
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-      subdomains: "abcd",
-    }).addTo(map);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
     map.setView([46.5, 2.3], 4);
     return () => { map.remove(); };
   }, []);
