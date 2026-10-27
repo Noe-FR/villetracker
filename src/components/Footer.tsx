@@ -50,10 +50,6 @@ export function Footer({ dark = false }: FooterProps) {
             <span>GitHub</span>
           </a>
 
-          <a href="/departements" className={`transition-colors ${hoverMl}`}>
-            Départements
-          </a>
-
           <a href="/mentions-legales" className={`transition-colors ${hoverMl}`}>
             Mentions légales
           </a>

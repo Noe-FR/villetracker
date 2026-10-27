@@ -5,7 +5,11 @@ import { SITE_URL } from "@/src/constants";
 // Un sitemap est plafonné à 50 000 URL par le protocole. Avec ~35 000 communes
 // plus les index départementaux on reste dessous ; si le seuil approche, passer
 // à generateSitemaps() pour découper en plusieurs fichiers.
-export const revalidate = 86400;
+// Rendu à la requête, pas au build : pendant `docker build` l'hôte `api`
+// ne résout pas (le build ne tourne pas sur le réseau compose), donc toute
+// donnée récupérée ici serait vide et figée dans l'image. Le coût est faible,
+// l'API met déjà ces réponses en cache côté serveur.
+export const dynamic = "force-dynamic";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
@@ -13,14 +17,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const statiques: MetadataRoute.Sitemap = [
     { url: SITE_URL, lastModified: now, changeFrequency: "daily", priority: 1 },
     { url: `${SITE_URL}/departements`, lastModified: now, changeFrequency: "monthly", priority: 0.8 },
-    { url: `${SITE_URL}/statistiques/graphiques`, lastModified: now, changeFrequency: "weekly", priority: 0.7 },
-    { url: `${SITE_URL}/statistiques/politique`, lastModified: now, changeFrequency: "weekly", priority: 0.7 },
-    { url: `${SITE_URL}/statistiques/cartes`, lastModified: now, changeFrequency: "weekly", priority: 0.7 },
-    { url: `${SITE_URL}/statistiques/fun`, lastModified: now, changeFrequency: "weekly", priority: 0.6 },
     { url: `${SITE_URL}/mentions-legales`, lastModified: now, changeFrequency: "yearly", priority: 0.1 },
   ];
-  // NB : /statistiques (vue d'ensemble) est volontairement absent, la page
-  // appelle encore notFound().
+  // Toute la section /statistiques est volontairement absente : fonctionnalité
+  // en cours de développement, son lien est masqué dans l'UI et /statistiques
+  // renvoie encore notFound(). À réintégrer quand elle sera publiée.
 
   let communes: MetadataRoute.Sitemap = [];
   let departements: MetadataRoute.Sitemap = [];

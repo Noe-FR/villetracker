@@ -6,6 +6,11 @@ import { Footer } from "@/src/components/Footer";
 
 export const metadata: Metadata = {
   title: "Statistiques nationales",
+  // Section en cours de développement : son lien est masqué dans l'UI et
+  // /statistiques renvoie encore notFound(). Le noindex évite qu'une page
+  // inachevée soit indexée si quelqu'un partage l'URL directe.
+  // À retirer en même temps que le notFound() quand la section sera publiée.
+  robots: { index: false, follow: false },
 };
 
 export default function StatistiquesLayout({ children }: { children: React.ReactNode }) {
