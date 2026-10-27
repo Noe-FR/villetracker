@@ -14,15 +14,28 @@ interface Props {
   params: Promise<{ code: string }>;
 }
 
+/** « Rhône (69) », ou juste « 975 » si le département n'a pas de nom en base.
+ *  Sans ça, `${d.nom}` interpolait littéralement la chaîne "null". */
+function libelleDept(nom: string | null, code: string): string {
+  return nom ? `${nom} (${code})` : code;
+}
+
+const pluriel = (n: number) => (n > 1 ? "communes" : "commune");
+
 async function getDept(code: string) {
   const index = await serverApi.getCommunesIndex(code);
   if (!index.communes.length) return null;
   const first = index.communes[0];
   return {
     code,
-    nom: first.departement_nom,
-    region: first.region_nom,
-    communes: [...index.communes].sort((a, b) => a.nom.localeCompare(b.nom, "fr")),
+    // Les collectivités d'outre-mer n'ont pas toujours de nom de département
+    // ni de région en base : on retombe sur des valeurs sûres plutôt que de
+    // propager des nulls jusqu'au rendu.
+    nom: first.departement_nom || null,
+    region: first.region_nom || null,
+    communes: [...index.communes].sort((a, b) =>
+      String(a.nom).localeCompare(String(b.nom), "fr"),
+    ),
   };
 }
 
@@ -30,22 +43,27 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { code } = await params;
   try {
     const d = await getDept(code);
-    if (!d) return { title: "Département — VilleTracker" };
+    // Pas de suffixe « — VilleTracker » : le template de app/layout.tsx
+    // l'ajoute déjà, sinon il apparaît deux fois.
+    if (!d) return { title: "Département" };
+    const n = d.communes.length;
+    const libelle = libelleDept(d.nom, d.code);
+    const description = `${n} ${pluriel(n)} dans le département ${libelle}${d.region ? `, ${d.region}` : ""} : finances locales, fiscalité, démographie et données territoriales.`;
     return {
-      title: `${d.nom} (${d.code}) — ${d.communes.length} communes — VilleTracker`,
-      description: `Les ${d.communes.length} communes du département ${d.nom} (${d.code}, ${d.region}) : finances locales, fiscalité, démographie et données territoriales.`,
+      title: `${libelle} — ${n} ${pluriel(n)}`,
+      description,
       alternates: { canonical: `${SITE_URL}/departement/${d.code}` },
       openGraph: {
-        title: `${d.nom} (${d.code}) — VilleTracker`,
-        description: `Les ${d.communes.length} communes du département ${d.nom}.`,
+        title: `${libelle} — VilleTracker`,
+        description,
         url: `${SITE_URL}/departement/${d.code}`,
         type: "website",
-        images: [{ url: OG_IMAGE, width: 1200, height: 630, alt: `${d.nom} — VilleTracker` }],
+        images: [{ url: OG_IMAGE, width: 1200, height: 630, alt: `${libelle} — VilleTracker` }],
       },
       twitter: { card: "summary_large_image", images: [OG_IMAGE] },
     };
   } catch {
-    return { title: "Département — VilleTracker" };
+    return { title: "Département" };
   }
 }
 
@@ -71,7 +89,7 @@ export default async function DepartementPage({ params }: Props) {
           itemListElement: [
             { "@type": "ListItem", position: 1, name: "Accueil", item: SITE_URL },
             { "@type": "ListItem", position: 2, name: "Départements", item: `${SITE_URL}/departements` },
-            { "@type": "ListItem", position: 3, name: d.nom, item: `${SITE_URL}/departement/${d.code}` },
+            { "@type": "ListItem", position: 3, name: d.nom ?? d.code, item: `${SITE_URL}/departement/${d.code}` },
           ],
         }}
       />
@@ -81,14 +99,15 @@ export default async function DepartementPage({ params }: Props) {
           <span className="mx-2">›</span>
           <Link href="/departements" className="hover:text-white transition-colors">Départements</Link>
           <span className="mx-2">›</span>
-          <span className="text-slate-300">{d.nom}</span>
+          <span className="text-slate-300">{d.nom ?? d.code}</span>
         </nav>
 
         <h1 className="text-3xl font-bold mb-3">
-          Communes du département {d.nom} ({d.code})
+          Communes du département {libelleDept(d.nom, d.code)}
         </h1>
         <p className="text-slate-400 mb-10 max-w-3xl">
-          {d.communes.length} communes en {d.region}. Chaque fiche détaille les
+          {d.communes.length} {pluriel(d.communes.length)}
+          {d.region ? ` en ${d.region}` : ""}. Chaque fiche détaille les
           finances locales, la fiscalité, la démographie, le logement et les
           données territoriales issues des sources publiques.
         </p>
