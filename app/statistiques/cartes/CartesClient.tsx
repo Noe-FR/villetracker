@@ -33,6 +33,8 @@ export function CartesClient() {
 
   useEffect(() => {
     if (!selectedId) return;
+    // Remise à zéro de l'état avant le fetch : un rendu supplémentaire assumé.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setData(null);
     api.getNationalCartes(selectedId)
@@ -179,7 +181,7 @@ export function CartesClient() {
 
           <p className="text-xs text-slate-600">
             Note : la visualisation cartographique interactive est en cours de développement.
-            Les données sont disponibles via l'API pour {data.nb_communes?.toLocaleString("fr-FR")} communes.
+            Les données sont disponibles via l&apos;API pour {data.nb_communes?.toLocaleString("fr-FR")} communes.
           </p>
         </div>
       )}

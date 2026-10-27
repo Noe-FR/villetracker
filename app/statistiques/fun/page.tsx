@@ -3,7 +3,7 @@ import { FunClient } from "./FunClient";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Anecdotes — Statistiques nationales — VilleTracker",
+  title: "Anecdotes — Statistiques nationales",
 };
 
 export default async function FunPage() {

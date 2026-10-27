@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { MapPin, Maximize2, BarChart2 } from "lucide-react";
 import L from "leaflet";
 import { FranceMap, communeStyle } from "../components/Map/FranceMap";
@@ -81,7 +82,7 @@ export function HomeClient() {
       <header className="shrink-0 z-[1001] flex items-center justify-between px-5 py-1.5 bg-white border-b border-slate-200 shadow-sm">
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-10 h-10 rounded-xl overflow-hidden shrink-0">
-            <img src="/square_blue.png" alt="" className="w-full h-full object-contain" />
+            <Image src="/square_blue.png" alt="" width={40} height={40} className="w-full h-full object-contain" />
           </div>
           <div>
             <h1 className="text-slate-900 font-bold text-base leading-tight">VilleTracker</h1>

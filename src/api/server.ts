@@ -42,6 +42,7 @@ export const serverApi = {
     fetchJson<{
       code_insee: string; nom: string; population?: number;
       departement_code?: string; departement_nom?: string;
+      region_nom?: string; codes_postaux?: string[];
     }>(`/geo/commune/${codeInsee}`),
 
   getCommuneGeo: (codeInsee: string) =>
@@ -49,6 +50,16 @@ export const serverApi = {
       code_insee: string; nom: string; population?: number;
       departement_code?: string; departement_nom?: string; geometry?: unknown;
     }>(`/geo/commune/${codeInsee}?geometry=true`),
+
+  // Index léger (sans géométries) — alimente le sitemap et les pages d'index.
+  getCommunesIndex: (dept?: string) =>
+    fetchJson<{
+      total: number;
+      communes: Array<{
+        code_insee: string; nom: string; population: number | null;
+        departement_code: string; departement_nom: string; region_nom: string;
+      }>;
+    }>(`/geo/communes/index${dept ? `?dept=${encodeURIComponent(dept)}` : ""}`),
 
   getCommunesByDept: (deptCode: string) =>
     fetchJson<GeoJSON.FeatureCollection>(`/geo/communes/departement/${deptCode}`),

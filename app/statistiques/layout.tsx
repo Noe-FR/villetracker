@@ -5,7 +5,7 @@ import { StatsNav } from "@/src/components/stats/StatsNav";
 import { Footer } from "@/src/components/Footer";
 
 export const metadata: Metadata = {
-  title: "Statistiques nationales — VilleTracker",
+  title: "Statistiques nationales",
 };
 
 export default function StatistiquesLayout({ children }: { children: React.ReactNode }) {

@@ -12,15 +12,28 @@ const _cache = new Map<string, unknown>();
 export function useApi<T>(
   fetcher: () => Promise<T>,
   deps: unknown[],
-  cacheKey?: string
+  cacheKey?: string,
+  // Donnée fournie par le serveur pour le premier rendu. Permet au HTML servi
+  // de contenir le contenu réel plutôt qu'un squelette, et évite un aller-retour
+  // réseau au montage.
+  initialData?: T
 ): State<T> {
+  // Amorce le cache module avec la donnée serveur : sans ça, un changement
+  // d'onglet puis un retour relancerait un appel pour une donnée déjà connue.
+  if (cacheKey && initialData !== undefined && !_cache.has(cacheKey)) {
+    _cache.set(cacheKey, initialData);
+  }
+
   const [state, setState] = useState<State<T>>(() => {
     const cached = cacheKey ? (_cache.get(cacheKey) as T | undefined) : undefined;
-    return { data: cached ?? null, loading: cached === undefined, error: null };
+    const seed = cached ?? initialData;
+    return { data: seed ?? null, loading: seed === undefined, error: null };
   });
 
   useEffect(() => {
     if (deps.some((d) => d === null || d === undefined)) {
+      // Remise à zéro quand une dépendance est nulle : un rendu supplémentaire assumé.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setState({ data: null, loading: false, error: null });
       return;
     }

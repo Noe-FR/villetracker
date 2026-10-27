@@ -84,7 +84,7 @@ export function PolitiqueClient({ resume, statsFamille, evolution, fun, records,
       <section>
         <h1 className="text-2xl font-bold text-white mb-1">Politique municipale</h1>
         <p className="text-slate-400 text-sm">
-          Résultats des élections municipales · {p.annee_derniere_election ?? "—"} · données Ministère de l'Intérieur &amp; RNE
+          Résultats des élections municipales · {p.annee_derniere_election ?? "—"} · données Ministère de l&apos;Intérieur &amp; RNE
         </p>
       </section>
 
@@ -283,7 +283,7 @@ export function PolitiqueClient({ resume, statsFamille, evolution, fun, records,
                       <Tooltip
                         contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0" }}
                       itemStyle={{ color: "#e2e8f0" }}
-                        formatter={(v: any, name: string) => [`${v} %`, name]}
+                        formatter={(v: any, name: any) => [`${v} %`, name]}
                       />
                       <Legend wrapperStyle={{ color: "#94a3b8", fontSize: 11 }} />
                       {famillesFiltered.map((f: any) => (
@@ -322,7 +322,7 @@ export function PolitiqueClient({ resume, statsFamille, evolution, fun, records,
                     <Tooltip
                       contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0" }}
                       itemStyle={{ color: "#e2e8f0" }}
-                      formatter={(v: any, name: string) => [`${v} %`, name]}
+                      formatter={(v: any, name: any) => [`${v} %`, name]}
                     />
                     <Legend wrapperStyle={{ color: "#94a3b8", fontSize: 11 }} />
                     <Line type="monotone" dataKey="taux_participation" name="Participation" stroke="#22c55e" dot={{ r: 4 }} strokeWidth={2} />
@@ -371,7 +371,7 @@ export function PolitiqueClient({ resume, statsFamille, evolution, fun, records,
                   <h2 className="text-lg font-semibold text-slate-200">Communes les plus instables</h2>
                   <SourceBadge label="Ministère de l'Intérieur" annee={(() => { const a = fun.source_info?.annees ?? []; return a.length > 1 ? `${a[0]}–${a[a.length-1]}` : a[0]; })()} />
                 </div>
-                <p className="text-xs text-slate-500 mb-3">Changements d'orientation politique entre chaque scrutin</p>
+                <p className="text-xs text-slate-500 mb-3">Changements d&apos;orientation politique entre chaque scrutin</p>
                 <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
                   <table className="w-full text-sm">
                     <thead>
@@ -463,7 +463,7 @@ export function PolitiqueClient({ resume, statsFamille, evolution, fun, records,
                 <div>
                   <h2 className="text-lg font-semibold text-slate-200">Victoires les plus serrées</h2>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Communes où l'écart en voix entre le 1er et le 2ème est le plus faible (communes ≥ 500 habitants)
+                    Communes où l&apos;écart en voix entre le 1er et le 2ème est le plus faible (communes ≥ 500 habitants)
                   </p>
                 </div>
                 <SourceBadge label="Ministère de l'Intérieur" annee={records.source_info?.sources?.[0]?.annee} />
@@ -619,7 +619,7 @@ export function PolitiqueClient({ resume, statsFamille, evolution, fun, records,
           {elus.source_info?.note && (
             <div className="flex items-start gap-3 bg-amber-950/20 border border-amber-800/30 rounded-xl px-4 py-3 text-sm text-amber-300">
               <span className="shrink-0">⚠</span>
-              <span>{elus.source_info.note} — statistiques sur l'échantillon disponible uniquement.</span>
+              <span>{elus.source_info.note} — statistiques sur l&apos;échantillon disponible uniquement.</span>
             </div>
           )}
 
@@ -712,7 +712,7 @@ export function PolitiqueClient({ resume, statsFamille, evolution, fun, records,
                     <Tooltip
                       contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0" }}
                       itemStyle={{ color: "#e2e8f0" }}
-                      formatter={(v: any, name: string) => [`${v} %`, name]}
+                      formatter={(v: any, name: any) => [`${v} %`, name]}
                     />
                     <Legend wrapperStyle={{ color: "#94a3b8", fontSize: 11 }} />
                     <ReferenceLine y={50} stroke="#475569" strokeDasharray="4 4" label={{ value: "Parité 50 %", fill: "#64748b", fontSize: 10 }} />
@@ -754,7 +754,7 @@ export function PolitiqueClient({ resume, statsFamille, evolution, fun, records,
                       <Tooltip
                         contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0" }}
                       itemStyle={{ color: "#e2e8f0" }}
-                        formatter={(v: any, name: string) => [v != null ? `${v} %` : "—", name]}
+                        formatter={(v: any, name: any) => [v != null ? `${v} %` : "—", name]}
                       />
                       <Legend wrapperStyle={{ color: "#94a3b8", fontSize: 11, paddingTop: 8 }} />
                       <ReferenceLine y={50} stroke="#475569" strokeDasharray="4 4" />
@@ -870,7 +870,7 @@ export function PolitiqueClient({ resume, statsFamille, evolution, fun, records,
                 </table>
               </div>
               <p className="text-xs text-slate-600 mt-2">
-                Source : croisement données électorales Ministère de l'Intérieur · dernière élection non incluse (noms partiellement disponibles)
+                Source : croisement données électorales Ministère de l&apos;Intérieur · dernière élection non incluse (noms partiellement disponibles)
               </p>
             </section>
           )}
@@ -961,7 +961,7 @@ export function PolitiqueClient({ resume, statsFamille, evolution, fun, records,
       {tab === "croisements" && statsFamille?.familles?.length > 0 && (
         <div className="space-y-10">
           <p className="text-sm text-slate-400">
-            Pour chaque famille politique, indicateurs moyens des communes qu'elle dirige — croisements entre orientation politique, santé financière et marché immobilier.
+            Pour chaque famille politique, indicateurs moyens des communes qu&apos;elle dirige — croisements entre orientation politique, santé financière et marché immobilier.
           </p>
 
           {/* Score financier par famille */}
@@ -1027,7 +1027,7 @@ export function PolitiqueClient({ resume, statsFamille, evolution, fun, records,
                       <tr key={f.famille} className="border-b border-slate-800/50 hover:bg-slate-800/30">
                         <td className="px-4 py-2">
                           <div className="flex items-center gap-2">
-                            <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: couleur(f.famille) }} />
+                            <div className="w-2.5 h-2.5 rounded-xs shrink-0" style={{ backgroundColor: couleur(f.famille) }} />
                             <span className="text-slate-300 text-xs">{f.famille}</span>
                           </div>
                         </td>
@@ -1073,7 +1073,7 @@ export function PolitiqueClient({ resume, statsFamille, evolution, fun, records,
                       <tr key={f.famille} className="border-b border-slate-800/50 hover:bg-slate-800/30">
                         <td className="px-4 py-2">
                           <div className="flex items-center gap-2">
-                            <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ backgroundColor: couleur(f.famille) }} />
+                            <div className="w-2.5 h-2.5 rounded-xs shrink-0" style={{ backgroundColor: couleur(f.famille) }} />
                             <span className="text-slate-300 text-xs">{f.famille}</span>
                           </div>
                         </td>
@@ -1137,7 +1137,7 @@ export function PolitiqueClient({ resume, statsFamille, evolution, fun, records,
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <h2 className="text-base font-semibold text-slate-200">Abstention T1 par famille</h2>
-                  <p className="text-xs text-slate-500 mt-0.5">Taux d'abstention moyen dans les communes remportées par chaque famille</p>
+                  <p className="text-xs text-slate-500 mt-0.5">Taux d&apos;abstention moyen dans les communes remportées par chaque famille</p>
                 </div>
                 <SourceBadge label="Ministère de l'Intérieur" annee={statsFamille?.annee_elec ?? p.annee_derniere_election} />
               </div>

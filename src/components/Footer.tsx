@@ -11,7 +11,6 @@ export function Footer({ dark = false }: FooterProps) {
     : "inline-flex items-center gap-1 bg-amber-50 border border-amber-200 text-amber-700 rounded px-2 py-0.5 font-medium";
   const hoverLi = dark ? "hover:text-blue-400" : "hover:text-blue-600";
   const hoverGh = dark ? "hover:text-white"    : "hover:text-slate-800";
-  const hoverCf = dark ? "hover:text-amber-400" : "hover:text-amber-600";
   const hoverMl = dark ? "hover:text-slate-300" : "hover:text-slate-700";
 
   return (
@@ -51,13 +50,8 @@ export function Footer({ dark = false }: FooterProps) {
             <span>GitHub</span>
           </a>
 
-          <a
-            href="/support"
-            className={`flex items-center gap-1 transition-colors ${hoverCf}`}
-            title="Soutenir le projet"
-          >
-            <span>☕</span>
-            <span>Soutenir</span>
+          <a href="/departements" className={`transition-colors ${hoverMl}`}>
+            Départements
           </a>
 
           <a href="/mentions-legales" className={`transition-colors ${hoverMl}`}>

@@ -54,7 +54,7 @@ export function SearchBar({ onSelect }: Props) {
         <input
           type="text"
           placeholder="Nom, code INSEE ou code postal…"
-          className="bg-transparent text-slate-800 text-sm py-2.5 outline-none flex-1 placeholder-slate-400"
+          className="bg-transparent text-slate-800 text-sm py-2.5 outline-hidden flex-1 placeholder-slate-400"
           value={query}
           onChange={(e) => { setQuery(e.target.value); search(e.target.value); }}
           onFocus={() => results.length > 0 && setOpen(true)}

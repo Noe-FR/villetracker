@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Vue d'ensemble — Statistiques nationales — VilleTracker",
+  title: "Vue d'ensemble — Statistiques nationales",
 };
 
 // TODO: retirer notFound() quand la feature est prête

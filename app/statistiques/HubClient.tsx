@@ -213,7 +213,7 @@ export function HubClient({ hub, evolutionFinances, notesDistribution }: Props) 
                   contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #334155", borderRadius: 8, color: "#e2e8f0" }}
                   itemStyle={{ color: "#e2e8f0" }}
                   labelStyle={{ color: "#e2e8f0" }}
-                  formatter={(v: any, name: string) => [`${v?.toLocaleString("fr-FR")} €`, name]}
+                  formatter={(v: any, name: any) => [`${v?.toLocaleString("fr-FR")} €`, name]}
                 />
                 <Legend wrapperStyle={{ color: "#94a3b8", fontSize: 12 }} />
                 <Line type="monotone" dataKey="depenses" name="Dépenses fonct." stroke="#f97316" dot={false} strokeWidth={2} />

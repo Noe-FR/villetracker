@@ -82,12 +82,12 @@ export function MentionsLegales() {
           <p className="text-sm text-slate-600 leading-relaxed">
             Le code source du frontend de ce site est publié sous licence{" "}
             <strong>GNU Affero General Public License v3.0 (AGPL-3.0)</strong>. Toute réutilisation doit
-            être publiée sous la même licence et créditer l'auteur original.
+            être publiée sous la même licence et créditer l&apos;auteur original.
           </p>
           <p className="text-sm text-slate-600 leading-relaxed">
             Les données affichées sont des données publiques issues de{" "}
             <a href="https://data.gouv.fr" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">data.gouv.fr</a>,
-            de l'INSEE, du Cerema, de la DINUM et du Ministère de l'Économie.
+            de l&apos;INSEE, du Cerema, de la DINUM et du Ministère de l&apos;Économie.
             Elles sont soumises aux licences de leurs producteurs respectifs (Etalab, Licence Ouverte 2.0).
           </p>
         </section>
@@ -103,7 +103,7 @@ export function MentionsLegales() {
             <p className="text-sm text-slate-600 leading-relaxed">
               Le site collecte des statistiques agrégées sur les ressources consultées (communes, départements,
               types de données). Ces statistiques sont <strong>strictement anonymes</strong> : aucun identifiant
-              personnel, aucun cookie de traçage, aucune donnée permettant d'identifier un visiteur n'est
+              personnel, aucun cookie de traçage, aucune donnée permettant d&apos;identifier un visiteur n&apos;est
               collectée ni conservée. Ce traitement ne constitue pas un traitement de données personnelles au
               sens du RGPD et ne requiert pas de base légale spécifique.
             </p>
@@ -112,9 +112,9 @@ export function MentionsLegales() {
           <div className="space-y-1">
             <p className="text-sm font-medium text-slate-700">4.2 Adresses IP — système de protection contre les abus</p>
             <p className="text-sm text-slate-600 leading-relaxed">
-              Afin d'assurer la sécurité et la disponibilité du service, les adresses IP peuvent être
+              Afin d&apos;assurer la sécurité et la disponibilité du service, les adresses IP peuvent être
               enregistrées temporairement en cas de comportement abusif (volume de requêtes anormal, tentatives
-              d'intrusion, scraping massif). Une adresse IP est une donnée à caractère personnel au sens du RGPD.
+              d&apos;intrusion, scraping massif). Une adresse IP est une donnée à caractère personnel au sens du RGPD.
             </p>
             <ul className="text-sm text-slate-600 space-y-1 mt-1 list-disc list-inside">
               <li>
@@ -123,15 +123,15 @@ export function MentionsLegales() {
               </li>
               <li>
                 <span className="font-medium">Durée de conservation :</span> 30 jours maximum à compter de
-                la date de l'incident ou de la levée du blocage.
+                la date de l&apos;incident ou de la levée du blocage.
               </li>
               <li>
                 <span className="font-medium">Destinataires :</span> données accessibles uniquement à
-                l'éditeur du site. Non transmises à des tiers.
+                l&apos;éditeur du site. Non transmises à des tiers.
               </li>
               <li>
-                <span className="font-medium">Droits :</span> vous disposez d'un droit d'accès, de
-                rectification, d'effacement et d'opposition. Pour exercer ces droits, contactez{" "}
+                <span className="font-medium">Droits :</span> vous disposez d&apos;un droit d&apos;accès, de
+                rectification, d&apos;effacement et d&apos;opposition. Pour exercer ces droits, contactez{" "}
                 <a href="mailto:contact@villetracker.fr" className="text-blue-600 hover:underline">
                   contact@villetracker.fr
                 </a>.
@@ -159,8 +159,8 @@ export function MentionsLegales() {
           </h3>
           <p className="text-sm text-slate-600 leading-relaxed">
             Les informations affichées sur ce site sont issues de sources publiques officielles et reproduites
-            sans modification. L'éditeur ne garantit pas leur exhaustivité ni leur exactitude et décline toute
-            responsabilité quant à leur utilisation. Le site est fourni en l'état, sans garantie de disponibilité
+            sans modification. L&apos;éditeur ne garantit pas leur exhaustivité ni leur exactitude et décline toute
+            responsabilité quant à leur utilisation. Le site est fourni en l&apos;état, sans garantie de disponibilité
             permanente.
           </p>
         </section>
