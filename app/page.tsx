@@ -35,9 +35,6 @@ export default function Page() {
       <HomeShell />
       <nav aria-label="Navigation principale" className="sr-only">
         <Link href="/departements">Départements et communes de France</Link>
-        <Link href="/statistiques/graphiques">Graphiques nationaux</Link>
-        <Link href="/statistiques/politique">Données politiques</Link>
-        <Link href="/statistiques/cartes">Cartes nationales</Link>
         <Link href="/mentions-legales">Mentions légales</Link>
       </nav>
     </>

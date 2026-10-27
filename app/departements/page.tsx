@@ -7,7 +7,11 @@ import { JsonLd } from "@/src/components/JsonLd";
 
 // Page d'index : sans elle, aucun crawler ne peut atteindre les pages commune,
 // qui n'étaient reliées au site par aucun lien.
-export const revalidate = 86400;
+// Rendu à la requête, pas au build : pendant `docker build` l'hôte `api`
+// ne résout pas (le build ne tourne pas sur le réseau compose), donc toute
+// donnée récupérée ici serait vide et figée dans l'image. Le coût est faible,
+// l'API met déjà ces réponses en cache côté serveur.
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Départements français",
