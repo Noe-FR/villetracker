@@ -27,6 +27,11 @@ interface Dept {
   nbCommunes: number;
 }
 
+// Certaines collectivités (975, 977, 978, 986, 987, 988) n'ont pas de région
+// en base. Sans repli, la valeur nulle sert de clé de regroupement et fait
+// échouer le tri par nom de région — toute la page partait en 500.
+const REGION_PAR_DEFAUT = "Autres territoires";
+
 export default async function DepartementsPage() {
   let depts: Dept[] = [];
   try {
@@ -39,12 +44,14 @@ export default async function DepartementsPage() {
       else
         map.set(c.departement_code, {
           code: c.departement_code,
-          nom: c.departement_nom,
-          region: c.region_nom,
+          nom: c.departement_nom || c.departement_code,
+          region: c.region_nom || REGION_PAR_DEFAUT,
           nbCommunes: 1,
         });
     }
-    depts = [...map.values()].sort((a, b) => a.code.localeCompare(b.code, "fr"));
+    depts = [...map.values()].sort((a, b) =>
+      String(a.code).localeCompare(String(b.code), "fr"),
+    );
   } catch {
     // API indisponible — la page se rend vide plutôt que d'échouer
   }
@@ -56,7 +63,9 @@ export default async function DepartementsPage() {
     list.push(d);
     parRegion.set(d.region, list);
   }
-  const regions = [...parRegion.entries()].sort((a, b) => a[0].localeCompare(b[0], "fr"));
+  const regions = [...parRegion.entries()].sort((a, b) =>
+    String(a[0]).localeCompare(String(b[0]), "fr"),
+  );
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
