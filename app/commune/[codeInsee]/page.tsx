@@ -1,8 +1,8 @@
-import { serverApi } from "@/src/api/server";
+import { ApiError, serverApi } from "@/src/api/server";
 import { buildFinancesTab } from "@/app/api/commune/[codeInsee]/financesTab";
 import { INITIAL_YEAR, OG_IMAGE, SITE_URL } from "@/src/constants";
 import { CommunePageClient } from "./CommunePageClient";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { JsonLd } from "@/src/components/JsonLd";
 
@@ -83,6 +83,27 @@ export default async function Page({ params }: Props) {
   const parent = PARENT[codeInsee];
   if (parent) redirect(`/commune/${parent}`);
 
+  // Existence vérifiée avant tout le reste : sans ça n'importe quel code
+  // renvoyait 200 sur une page vide (soft 404), ouvrant un espace d'URL
+  // infini au crawl.
+  //
+  // Deux statuts seulement valent « cette commune n'existe pas » : 404
+  // (inconnue en base) et 422 (code mal formé, rejeté par l'API).
+  //
+  // Surtout pas un 4xx générique : le routeur applique un rate limit, et un
+  // 429 renverrait alors des 404 sur des pages bien réelles au crawler qui
+  // va trop vite. Toute autre panne — 5xx, timeout, API injoignable — laisse
+  // la page se rendre en mode dégradé, car un 404 pendant un incident ferait
+  // désindexer les 35 000 pages d'un coup.
+  const STATUTS_INEXISTANTE = [404, 422];
+  let info: Awaited<ReturnType<typeof serverApi.getCommuneInfo>> | null = null;
+  try {
+    info = await serverApi.getCommuneInfo(codeInsee);
+  } catch (e) {
+    if (e instanceof ApiError && STATUTS_INEXISTANTE.includes(e.status)) notFound();
+    // autre erreur : on continue sans données structurées
+  }
+
   // Payload préchargé ici pour que le HTML envoyé contienne déjà le contenu :
   // sans ça la page ne sert qu'un squelette, illisible pour tout crawler qui
   // n'exécute pas le JavaScript. En cas d'échec le client reprendra la main.
@@ -96,8 +117,7 @@ export default async function Page({ params }: Props) {
   // Données structurées : décrivent la commune et sa position dans la
   // hiérarchie administrative, pour les résultats enrichis.
   let jsonLd: Record<string, unknown> | null = null;
-  try {
-    const info = await serverApi.getCommuneInfo(codeInsee);
+  if (info) {
     const url = `${SITE_URL}/commune/${codeInsee}`;
     jsonLd = {
       "@context": "https://schema.org",
@@ -141,8 +161,6 @@ export default async function Page({ params }: Props) {
         },
       ],
     };
-  } catch {
-    // sans métadonnées commune, on sert la page sans données structurées
   }
 
   return (
