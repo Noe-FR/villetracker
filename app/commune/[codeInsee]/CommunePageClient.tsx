@@ -1,18 +1,16 @@
 'use client';
-import dynamic from "next/dynamic";
+import { CommuneDetailClient } from "@/src/views/CommuneDetail";
 
-const CommuneDetailClient = dynamic(
-  () => import("@/src/views/CommuneDetail").then((m) => m.CommuneDetailClient),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="h-screen w-screen flex items-center justify-center bg-slate-950">
-        <div className="text-slate-500 text-sm">Chargement…</div>
-      </div>
-    ),
-  }
-);
-
-export function CommunePageClient({ codeInsee }: { codeInsee: string }) {
-  return <CommuneDetailClient codeInsee={codeInsee} />;
+// Plus de dynamic(ssr:false) ici : les seuls composants qui touchent `window`
+// (les cartes Leaflet) sont isolés dans CommuneMaps et chargés dynamiquement
+// depuis CommuneDetail. Le reste de la page est donc rendu côté serveur, ce
+// qui est indispensable au référencement des ~35 000 pages commune.
+export function CommunePageClient({
+  codeInsee,
+  initialFinTab,
+}: {
+  codeInsee: string;
+  initialFinTab?: unknown;
+}) {
+  return <CommuneDetailClient codeInsee={codeInsee} initialFinTab={initialFinTab} />;
 }

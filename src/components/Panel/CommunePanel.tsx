@@ -1,4 +1,5 @@
 'use client';
+import Link from "next/link";
 import {
   X, ExternalLink, MapPin, Users, Mountain, Waves,
   TreePine, Loader2, AlertCircle, Building2, ShieldCheck, User,
@@ -290,13 +291,17 @@ export function CommunePanel({ codeInsee, initialInfo, onClose }: Props) {
 
       {/* ── Footer ── */}
       <div className="p-4 border-t border-slate-700 shrink-0">
-        <button
-          onClick={() => window.open(`/commune/${codeInsee}`, "_blank")}
+        {/* Un vrai <a> et non un window.open : sans href, aucun crawler ne peut
+            suivre le chemin vers les pages commune. */}
+        <Link
+          href={`/commune/${codeInsee}`}
+          target="_blank"
+          rel="noopener"
           className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold text-sm py-2.5 px-4 rounded-xl transition-colors"
         >
           <ExternalLink size={15} />
           Voir le détail complet
-        </button>
+        </Link>
       </div>
     </div>
   );

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 const TRANCHE_LABELS: Record<string, string> = {
   "0":  "Moins de 100 hab.",

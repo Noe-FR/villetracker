@@ -3,7 +3,7 @@ import { PolitiqueClient } from "./PolitiqueClient";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Politique — Statistiques nationales — VilleTracker",
+  title: "Politique — Statistiques nationales",
 };
 
 export default async function PolitiquePage() {

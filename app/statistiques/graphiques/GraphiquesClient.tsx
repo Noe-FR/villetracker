@@ -23,6 +23,8 @@ export function GraphiquesClient() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    // Remise à zéro de l'état avant le fetch : un rendu supplémentaire assumé.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setData(null);
     api.getNationalGraphiques(bloc)
@@ -199,7 +201,7 @@ function ScoresBloc({ data }: { data: any }) {
               <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} domain={[0, 100]} tickFormatter={(v) => `${v} pts`} />
               <Tooltip
                 {...tooltipStyle}
-                formatter={(v: any, name: string) => [
+                formatter={(v: any, name: any) => [
                   `${v} pts`,
                   name === "median" ? "Médiane" : name === "q1" ? "1er quartile (Q1)" : name === "q3" ? "3e quartile (Q3)" : name,
                 ]}
@@ -450,7 +452,7 @@ function EnergieBloc({ data }: { data: any }) {
         </div>
 
         <div className={chartContainer}>
-          <p className={chartTitle}>Émissions de CO₂ par secteur d'activité (Mt CO₂ eq.)</p>
+          <p className={chartTitle}>Émissions de CO₂ par secteur d&apos;activité (Mt CO₂ eq.)</p>
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={g28} layout="vertical" margin={{ left: 155, right: 60 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
@@ -523,7 +525,7 @@ function MobiliteBloc({ data }: { data: any }) {
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
               <XAxis type="number" tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
               <YAxis type="category" dataKey="region" tick={{ fill: "#94a3b8", fontSize: 10 }} width={125} />
-              <Tooltip {...tooltipStyle} formatter={(v: any, name: string) => [`${v} %`, name]} />
+              <Tooltip {...tooltipStyle} formatter={(v: any, name: any) => [`${v} %`, name]} />
               <Legend wrapperStyle={{ color: "#94a3b8", fontSize: 11 }} />
               <Bar dataKey="voiture" name="Voiture" fill="#f97316" radius={[0, 0, 0, 0]} stackId="a" />
               <Bar dataKey="tc" name="TC" fill="#3b82f6" radius={[0, 4, 4, 0]} stackId="b" />
@@ -554,7 +556,7 @@ function ElectionsBloc({ data }: { data: any }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className={chartContainer}>
-          <p className={chartTitle}>Évolution de l'abstention T1 aux municipales</p>
+          <p className={chartTitle}>Évolution de l&apos;abstention T1 aux municipales</p>
           <ResponsiveContainer width="100%" height={250}>
             <LineChart data={g34}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
@@ -597,7 +599,7 @@ function ElectionsBloc({ data }: { data: any }) {
               <YAxis tick={{ fill: "#94a3b8", fontSize: 11 }} tickFormatter={(v) => `${v}%`} unit="%" />
               <Tooltip
                 {...tooltipStyle}
-                formatter={(v: any, name: string) => [`${v} %`, name === "median" ? "Médiane abstention" : name]}
+                formatter={(v: any, name: any) => [`${v} %`, name === "median" ? "Médiane abstention" : name]}
                 labelFormatter={(l) => `Communes ${l}`}
               />
               <Bar dataKey="median" name="Médiane abstention" fill="#f43f5e" radius={[4, 4, 0, 0]} />

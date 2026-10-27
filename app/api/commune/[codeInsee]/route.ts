@@ -7,6 +7,7 @@ import {
   transformDvfEvolution, transformDvfTransactions,
   transformElus, transformMarches,
 } from "./transforms";
+import { buildFinancesTab } from "./financesTab";
 
 export async function GET(
   req: NextRequest,
@@ -26,27 +27,10 @@ export async function GET(
   try {
     let data: unknown;
     switch (tab) {
-      case "finances": {
-        const [rawFin, cmp, score, years, geo, scoreHisto] = await Promise.allSettled([
-          serverApi.getCommuneFinances(codeInsee, year),
-          serverApi.getCommuneComparison(codeInsee, year),
-          serverApi.getCommuneScore(codeInsee, year),
-          serverApi.getAvailableYears(),
-          serverApi.getCommuneGeo(codeInsee),
-          serverApi.getScoreHistorique(codeInsee),
-        ]);
-        data = {
-          finances:       transformFinances(
-            rawFin.status === "fulfilled" ? rawFin.value : null,
-            geo.status    === "fulfilled" ? geo.value    : null,
-          ),
-          comparison:     transformComparison(cmp.status === "fulfilled" ? cmp.value : null),
-          score:          score.status      === "fulfilled" ? score.value      : null,
-          years:          years.status      === "fulfilled" ? years.value      : { years: [], latest: year },
-          scoreHistorique: scoreHisto.status === "fulfilled" ? scoreHisto.value : null,
-        };
+      case "finances":
+        // Même composition que le rendu serveur de la page commune.
+        data = await buildFinancesTab(codeInsee, year);
         break;
-      }
       case "comptes":
         data = await serverApi.getComptes(codeInsee, year);
         break;

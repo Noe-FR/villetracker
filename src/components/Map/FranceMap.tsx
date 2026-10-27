@@ -203,7 +203,6 @@ function MapLayers({ selectedCode, onSelectCommune }: Props) {
         communeLayerRef.current = null;
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]);
 
   // Zoom to selected commune (e.g. from search)

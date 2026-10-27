@@ -1,6 +1,20 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+/* Thème porté depuis tailwind.config.js (Tailwind 4 est CSS-first).
+   Aucune de ces valeurs n'est utilisée dans le code actuel — conservées
+   à l'identique pour ne rien retirer au passage de la v3 à la v4. */
+@theme {
+  --color-brand-50: #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb;
+  --color-brand-700: #1d4ed8;
+  --color-brand-900: #1e3a8a;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --font-sans: Inter, system-ui, sans-serif;
+}
 
 @layer base {
   * {

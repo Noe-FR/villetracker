@@ -1,6 +1,7 @@
 'use client';
-import React, { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Link from 'next/link';
+import dynamic from "next/dynamic";
 import {
   ArrowLeft,
   Users,
@@ -25,8 +26,6 @@ import {
   Info,
   X as XIcon,
 } from "lucide-react";
-import L from "leaflet";
-import "leaflet/dist/leaflet.css";
 import type {
   CompteClasse,
   EnergieData,
@@ -39,7 +38,20 @@ import type {
   EconomieData,
 } from "../types";
 import { useApi } from "../hooks/useApi";
+import { INITIAL_YEAR } from "../constants";
+
+// Les cartes touchent `window` au chargement du module (Leaflet) : chargées en
+// dynamic(ssr:false) pour que le reste de la page soit rendu côté serveur.
+const CommuneMiniMap = dynamic(
+  () => import("./CommuneMaps").then((m) => m.CommuneMiniMap),
+  { ssr: false, loading: () => <div style={{ width: "100%", height: "192px" }} className="bg-slate-800/50 animate-pulse rounded" /> }
+);
+const DvfSalesMap = dynamic(
+  () => import("./CommuneMaps").then((m) => m.DvfSalesMap),
+  { ssr: false, loading: () => <div className="h-[420px] bg-slate-800/50 animate-pulse rounded" /> }
+);
 import { api } from "../api/client";
+import type { DvfSalesMapHandle } from "./CommuneMaps";
 import { StatCard } from "../components/Panel/StatCard";
 import { higherIsBetter as hib } from "../utils/indicators";
 import { EvolutionChart } from "../components/Charts/EvolutionChart";
@@ -83,274 +95,6 @@ function YoYBadge({
   );
 }
 
-// ── Mini-map (vanilla Leaflet, no react-leaflet) ──────────────────────────────
-
-function CommuneMiniMap({ codeInsee }: { codeInsee: string }) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const layerRef = useRef<L.GeoJSON | null>(null);
-
-  const { data: geoData } = useApi(
-    () => api.getCommuneGeo(codeInsee),
-    [codeInsee]
-  );
-
-  // Init map once
-  useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
-    const map = L.map(containerRef.current, {
-      zoomControl: false,
-      dragging: false,
-      scrollWheelZoom: false,
-      doubleClickZoom: false,
-      attributionControl: false,
-      keyboard: false,
-    });
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
-    map.setView([46.5, 2.3], 5);
-    mapRef.current = map;
-    return () => {
-      map.remove();
-      mapRef.current = null;
-    };
-  }, []);
-
-  // Add GeoJSON when data arrives
-  useEffect(() => {
-    if (!mapRef.current || !geoData) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const geometry = (geoData as any).geometry;
-    if (!geometry) return;
-    try {
-      if (layerRef.current) {
-        layerRef.current.remove();
-        layerRef.current = null;
-      }
-      const feature = { type: "Feature", geometry, properties: {} };
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const layer = L.geoJSON(feature as any, {
-        style: {
-          fillColor: "#3b82f6",
-          fillOpacity: 0.45,
-          color: "#60a5fa",
-          weight: 2.5,
-        },
-      });
-      layer.addTo(mapRef.current);
-      layerRef.current = layer;
-      const bounds = layer.getBounds();
-      if (bounds.isValid()) {
-        mapRef.current.fitBounds(bounds, { padding: [16, 16] });
-      }
-    } catch {
-      // invalid geo data — map stays at France view
-    }
-  }, [geoData]);
-
-  return (
-    <div
-      ref={containerRef}
-      style={{ width: "100%", height: "192px" }}
-    />
-  );
-}
-
-// ── Carte des ventes DVF — points individuels ────────────────────────────────
-
-function pointColor(prix_m2: number | null): { fill: string; border: string } {
-  if (!prix_m2)       return { fill: "#94a3b8", border: "#64748b" };
-  if (prix_m2 < 1500) return { fill: "#22c55e", border: "#16a34a" };
-  if (prix_m2 < 2500) return { fill: "#84cc16", border: "#65a30d" };
-  if (prix_m2 < 3500) return { fill: "#eab308", border: "#ca8a04" };
-  if (prix_m2 < 5000) return { fill: "#f97316", border: "#ea580c" };
-  if (prix_m2 < 7000) return { fill: "#ef4444", border: "#dc2626" };
-  return { fill: "#a855f7", border: "#9333ea" };
-}
-
-export interface DvfSalesMapHandle {
-  isolateId: (id: string, popup: string) => void;
-  togglePoints: () => boolean;
-}
-
-const DvfSalesMap = forwardRef<DvfSalesMapHandle, { pointsData: { mode: string; total: number; features: any[] } }>(
-  function DvfSalesMap({ pointsData }, ref) {
-  const containerRef    = useRef<HTMLDivElement>(null);
-  const mapRef          = useRef<L.Map | null>(null);
-  const markersRef      = useRef<Map<string, L.CircleMarker>>(new Map());
-  const layerGroupRef   = useRef<L.LayerGroup | null>(null);
-  const highlightRef    = useRef<L.CircleMarker | null>(null);
-  const fmtRef = useRef(new Intl.NumberFormat("fr-FR"));
-  const fmt = fmtRef.current;
-
-  const clearHighlight = () => {
-    highlightRef.current?.remove();
-    highlightRef.current = null;
-  };
-
-  useImperativeHandle(ref, () => ({
-    isolateId(id: string, popup: string) {
-      const marker = markersRef.current.get(id);
-      if (!marker || !mapRef.current) return;
-      // Hide all points
-      layerGroupRef.current?.remove();
-      // Remove previous highlight
-      clearHighlight();
-      // Add a single bright highlight marker
-      const latlng = marker.getLatLng();
-      const hl = L.circleMarker(latlng, {
-        radius: 9,
-        fillColor: "#facc15",
-        color: "#fff",
-        weight: 2.5,
-        fillOpacity: 1,
-      }).bindPopup(popup).addTo(mapRef.current);
-      hl.openPopup();
-      highlightRef.current = hl;
-      mapRef.current.flyTo(latlng, 17, { animate: true, duration: 0.6 });
-    },
-    togglePoints() {
-      const map = mapRef.current;
-      const lg  = layerGroupRef.current;
-      if (!map || !lg) return true;
-      clearHighlight();
-      if (map.hasLayer(lg)) { lg.remove(); return false; }
-      else { lg.addTo(map); return true; }
-    },
-  }));
-
-  useEffect(() => {
-    if (!containerRef.current || mapRef.current) return;
-    const map = L.map(containerRef.current, {
-      zoomControl: true,
-      scrollWheelZoom: false,
-      attributionControl: true,
-    });
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributeurs',
-      maxZoom: 19,
-    }).addTo(map);
-    map.setView([46.5, 2.3], 5);
-    mapRef.current = map;
-    return () => { map.remove(); mapRef.current = null; };
-  }, []);
-
-  useEffect(() => {
-    if (!mapRef.current || !pointsData?.features?.length) return;
-    const map = mapRef.current;
-    const lg = L.layerGroup().addTo(map);
-    layerGroupRef.current = lg;
-    const layers: L.CircleMarker[] = [];
-    const bounds: [number, number][] = [];
-    const isLight = pointsData.mode === "light";
-    markersRef.current.clear();
-
-    for (const feat of pointsData.features) {
-      const p = feat.properties;
-      const [lon, lat] = feat.geometry.coordinates;
-      bounds.push([lat, lon]);
-
-      const { fill, border } = pointColor(p.prix_m2);
-      const isMaison = p.type?.toLowerCase().includes("maison");
-      const emoji = isMaison ? "🏠" : "🏢";
-
-      let popupHtml: string;
-      if (!isLight) {
-        const prixStr    = p.prix    ? `${fmt.format(p.prix)} €`        : "–";
-        const prixM2Str  = p.prix_m2 ? `${fmt.format(p.prix_m2)} €/m²` : "–";
-        const surfaceStr = p.surface ? `${fmt.format(p.surface)} m²`    : "–";
-        const dateStr    = p.date ?? p.annee ?? "–";
-        popupHtml = `
-          <div style="font-size:12px;line-height:1.8;min-width:160px">
-            <strong style="font-size:13px">${emoji} ${p.type || "Vente"}</strong><br/>
-            <span style="color:#888">${dateStr}</span><br/>
-            <strong>${prixM2Str}</strong><br/>
-            <span style="color:#555">${prixStr}</span> · <span style="color:#555">${surfaceStr}</span>
-          </div>`;
-      } else {
-        const prixM2Str = p.prix_m2 ? `${fmt.format(p.prix_m2)} €/m²` : "–";
-        popupHtml = `
-          <div style="font-size:12px;line-height:1.8;min-width:160px">
-            <strong style="font-size:13px">${emoji} ${p.type || "Vente"}</strong><br/>
-            <span style="color:#888">${p.annee ?? "–"}</span><br/>
-            <strong>${prixM2Str}</strong><br/>
-            <span style="color:#888;font-style:italic">Cliquez pour voir les détails…</span>
-          </div>`;
-      }
-
-      const layer = L.circleMarker([lat, lon], {
-        radius: 5,
-        fillColor: fill,
-        color: border,
-        weight: 1,
-        fillOpacity: 0.75,
-      }).bindPopup(popupHtml);
-
-      if (isLight) {
-        layer.on("popupopen", async (e: any) => {
-          if (!p.id) return;
-          try {
-            const detail = await api.getDvfTransactionDetail(p.id);
-            const prixStr    = detail.prix    ? `${fmt.format(detail.prix)} €`        : "–";
-            const prixM2Str  = detail.prix_m2 ? `${fmt.format(detail.prix_m2)} €/m²` : "–";
-            const surfaceStr = detail.surface ? `${fmt.format(detail.surface)} m²`    : "–";
-            const dateStr    = detail.date ?? detail.annee ?? "–";
-            const vefaStr    = detail.vefa ? " · VEFA" : "";
-            e.popup.setContent(`
-              <div style="font-size:12px;line-height:1.8;min-width:160px">
-                <strong style="font-size:13px">${emoji} ${detail.type || "Vente"}${vefaStr}</strong><br/>
-                <span style="color:#888">${dateStr}</span><br/>
-                <strong>${prixM2Str}</strong><br/>
-                <span style="color:#555">${prixStr}</span> · <span style="color:#555">${surfaceStr}</span>
-              </div>`);
-          } catch { /* keep current content */ }
-        });
-      }
-
-      layer.addTo(lg);
-      layers.push(layer);
-      if (p.id) markersRef.current.set(p.id, layer);
-    }
-
-    if (bounds.length) {
-      try { map.fitBounds(L.latLngBounds(bounds), { padding: [24, 24], maxZoom: 17 }); } catch { /* noop */ }
-    }
-    return () => { lg.remove(); layerGroupRef.current = null; markersRef.current.clear(); };
-  // fmt est stable (useRef) — pas besoin dans les deps
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pointsData]);
-
-  const legendItems = [
-    { label: "< 1 500 €/m²", color: "#22c55e" },
-    { label: "1 500–2 500",  color: "#84cc16" },
-    { label: "2 500–3 500",  color: "#eab308" },
-    { label: "3 500–5 000",  color: "#f97316" },
-    { label: "5 000–7 000",  color: "#ef4444" },
-    { label: "> 7 000 €/m²", color: "#a855f7" },
-  ];
-
-  return (
-    <div className="relative">
-      <div ref={containerRef} style={{ width: "100%", height: "400px", borderRadius: "0.75rem", overflow: "hidden" }} />
-      <div className="absolute bottom-3 left-3 bg-white/90 backdrop-blur-sm rounded-lg p-2 shadow text-[10px] space-y-0.5 z-[1000]">
-        <p className="font-semibold text-slate-700 mb-1">Prix (€/m²)</p>
-        {legendItems.map(({ label, color }) => (
-          <div key={label} className="flex items-center gap-1.5">
-            <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
-            <span className="text-slate-600">{label}</span>
-          </div>
-        ))}
-        {pointsData.mode === "light" && (
-          <p className="text-slate-400 mt-1 italic">Cliquer pour les détails</p>
-        )}
-      </div>
-      {pointsData.total > 0 && (
-        <p className="text-[10px] text-slate-500 mt-1 text-right">
-          {fmt.format(pointsData.total)} ventes géolocalisées
-        </p>
-      )}
-    </div>
-  );
-});
 
 // ── Grand livre accordéon ─────────────────────────────────────────────────────
 
@@ -921,7 +665,7 @@ function FiscaliteProSection({ data }: { data: FiscaliteProData }) {
       </div>
       <p className="text-[10px] text-slate-600 mt-3">
         Source : DGFiP — Fiscalité locale des entreprises · CFE = Cotisation Foncière des Entreprises ·
-        TFNB = Taxe Foncière sur les Propriétés Non Bâties · TEOM = Taxe d'Enlèvement des Ordures Ménagères
+        TFNB = Taxe Foncière sur les Propriétés Non Bâties · TEOM = Taxe d&apos;Enlèvement des Ordures Ménagères
       </p>
     </div>
   );
@@ -1044,8 +788,8 @@ function AlternanceTimeline({
 
       <p className="text-[10px] text-slate-600 mt-4">
         Source : Données des élections agrégées — data.gouv.fr ·
-        L'appartenance politique est déclarée par la liste lors du dépôt de candidature.
-        Le nom du maire n'est disponible que pour la mandature en cours (RNE).
+        L&apos;appartenance politique est déclarée par la liste lors du dépôt de candidature.
+        Le nom du maire n&apos;est disponible que pour la mandature en cours (RNE).
       </p>
     </div>
   );
@@ -1146,7 +890,7 @@ function ResultatsBarChart({
               <div className="flex items-baseline justify-between text-xs mb-1">
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <div
-                    className="w-2.5 h-2.5 rounded-sm shrink-0"
+                    className="w-2.5 h-2.5 rounded-xs shrink-0"
                     style={{ backgroundColor: n.couleur }}
                   />
                   <div className="min-w-0">
@@ -1202,7 +946,7 @@ function ResultatsBarChart({
       {stats && <TourStats stats={stats} />}
 
       <p className="text-[10px] text-slate-600 mt-4">
-        Source : Ministère de l'Intérieur — data.gouv.fr · L'appartenance politique est déclarée par la liste lors du dépôt de candidature.
+        Source : Ministère de l&apos;Intérieur — data.gouv.fr · L&apos;appartenance politique est déclarée par la liste lors du dépôt de candidature.
       </p>
     </div>
   );
@@ -1320,7 +1064,7 @@ function ElusSection({ data }: { data: ElusData }) {
       {/* Source + note parti */}
       <p className="text-[10px] text-slate-600">
         {data.source} · Données mises à jour trimestriellement ·{" "}
-        L'appartenance politique n'est pas publiée dans ce répertoire.
+        L&apos;appartenance politique n&apos;est pas publiée dans ce répertoire.
         {!data.cm_disponible && " · Liste des conseillers temporairement indisponible."}
       </p>
     </div>
@@ -1504,13 +1248,15 @@ interface CommuneDetailClientProps {
   codeInsee: string;
   initialGeo?: unknown;
   initialFinances?: unknown;
+  // Payload de l'onglet finances préchargé par le serveur (voir page.tsx).
+  initialFinTab?: unknown;
 }
 
-export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
-  const [year, setYear] = useState(2024);
+export function CommuneDetailClient({ codeInsee, initialFinTab }: CommuneDetailClientProps) {
+  const [year, setYear] = useState(INITIAL_YEAR);
 
   // Années effectives par dataset — clamp sur le max disponible de chaque source
-  const [finLatest, setFinLatest] = useState(2024);
+  const [finLatest, setFinLatest] = useState(INITIAL_YEAR);
   const effFin     = Math.min(year, finLatest);
   const effComp    = Math.min(year, MAX_COMPTABLE);
   const effMarches = Math.min(year, MAX_MARCHES);
@@ -1551,8 +1297,12 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
   // Rediriger vers conseil si territoire limité et onglet non disponible
   useEffect(() => {
     if (domTom && TABS.find(t => t.id === tab)?.metroOnly) {
+      // Redirection d'onglet quand le territoire ne le propose pas.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setTab("conseil");
     }
+  // Motif revu : pas de bug de correction.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [codeInsee, domTom]);
   // Scroll l'onglet actif dans la zone visible
   useEffect(() => {
@@ -1573,7 +1323,12 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
   } = useApi(
     () => api.getFinancesTab(codeInsee!, effFin),
     [codeInsee, effFin],
-    `finances:${codeInsee}:${effFin}`
+    `finances:${codeInsee}:${effFin}`,
+    // Donnée serveur : valable uniquement pour l'année initiale, au-delà le
+    // client refait l'appel normalement.
+    effFin === INITIAL_YEAR
+      ? (initialFinTab as Awaited<ReturnType<typeof api.getFinancesTab>> | undefined)
+      : undefined
   );
 
   const finances      = finTab?.finances   ?? null;
@@ -1585,6 +1340,8 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
   // Mettre à jour l'année par défaut et le max connu dès que les années dispo sont chargées
   useEffect(() => {
     if (finTab?.years?.latest) {
+      // Année par défaut fixée dès que les années disponibles sont chargées.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFinLatest(finTab.years.latest);
       setYear(finTab.years.latest);
     }
@@ -1613,6 +1370,8 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
   const [marchesPage, setMarchesPage] = useState(1);
   const [marchesLimit, setMarchesLimit] = useState(50);
   const [eauParam, setEauParam] = useState<"th_avg"|"nitrates_avg"|"ph_avg"|"conductivite_avg"|"turbidite_avg"|"calcium_avg"|"sulfates_avg">("th_avg");
+  // Retour en page 1 quand la commune ou le filtre change.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setMarchesPage(1); }, [codeInsee, effMarches]);
 
   const {
@@ -1707,6 +1466,8 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
   const [dvfTxPageSize, setDvfTxPageSize] = useState(25);
   const [dvfTxSortBy, setDvfTxSortBy]   = useState<"date"|"surface"|"prix"|"prix_m2">("date");
   const [dvfTxSortDir, setDvfTxSortDir] = useState<"asc"|"desc">("desc");
+  // Retour en page 1 quand la commune ou l'année change.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setDvfTxPage(1); }, [codeInsee, effTx]);
   const { data: dvfTx, loading: loadingDvfTx } = useApi(
     () =>
@@ -1749,6 +1510,8 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
   useEffect(() => {
     if (historiqueElections?.elections?.length && selectedElectionId === null) {
       const mostRecent = [...historiqueElections.elections].sort((a, b) => b.annee - a.annee)[0];
+      // Sélection de l'élection la plus récente dès que l'historique est chargé.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedElectionId(mostRecent.id_election);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1837,7 +1600,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
               <select
                 value={year}
                 onChange={(e) => setYear(Number(e.target.value))}
-                className="bg-slate-800 border border-slate-600 text-white text-sm rounded-lg px-3 py-1.5 outline-none cursor-pointer"
+                className="bg-slate-800 border border-slate-600 text-white text-sm rounded-lg px-3 py-1.5 outline-hidden cursor-pointer"
               >
                 {ALL_YEARS.map((y) => (
                   <option key={y} value={y} className="bg-slate-800">
@@ -1961,7 +1724,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
             {domTom && (
               <div className="flex items-center gap-2 px-5 py-2.5 bg-amber-900/20 border-b border-amber-800/40 text-amber-400 text-xs">
                 <AlertCircle size={13} className="shrink-0" />
-                Données limitées pour ce territoire — seul l'onglet Conseil municipal est disponible.
+                Données limitées pour ce territoire — seul l&apos;onglet Conseil municipal est disponible.
               </div>
             )}
 
@@ -2094,7 +1857,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                     <EvolutionChart series={evolutionSeries} mode={chartMode} />
                   ) : (
                     <p className="text-slate-400 text-sm text-center py-12">
-                      Données d'évolution non disponibles
+                      Données d&apos;évolution non disponibles
                     </p>
                   )}
                 </div>
@@ -2246,7 +2009,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                           contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: 8, fontSize: 12, color: "#e2e8f0" }}
                           labelStyle={{ color: "#cbd5e1" }}
                           itemStyle={{ color: "#e2e8f0" }}
-                          formatter={(value: unknown, _: string, props: any) => {
+                          formatter={(value: unknown, _: any, props: any) => {
                             const row = props.payload;
                             const color = NOTE_COLOR[row.note] ?? "#94a3b8";
                             return [
@@ -2534,8 +2297,8 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                         </span>
                       </div>
                       <p className="text-xs text-slate-500">
-                        Quantité totale d'énergie consommée sur le territoire de la commune, répartie par filière
-                        (électricité et gaz naturel) et par secteur d'activité — résidentiel (logements), professionnel
+                        Quantité totale d&apos;énergie consommée sur le territoire de la commune, répartie par filière
+                        (électricité et gaz naturel) et par secteur d&apos;activité — résidentiel (logements), professionnel
                         (commerces, services), entreprises (industrie). Exprimée en MWh/an.
                       </p>
                     </div>
@@ -2566,7 +2329,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                       </h2>
                       <p className="text-xs text-slate-500">
                         <span className="font-medium text-slate-400">Émissions GES</span> — émissions annuelles de gaz à effet de serre
-                        (en ktCO₂ équivalent) par secteur d'activité, issues du bilan Ecolab / ADEME.
+                        (en ktCO₂ équivalent) par secteur d&apos;activité, issues du bilan Ecolab / ADEME.
                         {" "}<span className="font-medium text-slate-400">Mobilité domicile-travail</span> — part modale des
                         actifs selon leur mode de transport principal pour aller travailler (recensement INSEE via Ecolab).
                       </p>
@@ -2592,7 +2355,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                 {/* ── Eau potable ── */}
                 {loadingEau && (
                   <div className="flex items-center gap-2 text-slate-400 justify-center py-4">
-                    <Loader2 size={16} className="animate-spin" /> Qualité de l'eau…
+                    <Loader2 size={16} className="animate-spin" /> Qualité de l&apos;eau…
                   </div>
                 )}
                 {eau && (() => {
@@ -2626,7 +2389,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                           </span>
                         </div>
                         <p className="text-xs text-slate-500 mb-5">
-                          Source : Hub'Eau — Contrôle sanitaire DIS (Ministère de la Santé)
+                          Source : Hub&apos;Eau — Contrôle sanitaire DIS (Ministère de la Santé)
                           {eau.distributeur && <> · <span className="text-slate-400">{eau.distributeur}</span></>}
                         </p>
 
@@ -2660,7 +2423,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                         <div className={`rounded-2xl border ${th.border} ${th.bg} p-5`}>
                           <div className="flex items-center justify-between flex-wrap gap-4">
                             <div>
-                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">Dureté de l'eau (TH)</p>
+                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-1">Dureté de l&apos;eau (TH)</p>
                               <div className="flex items-baseline gap-2">
                                 <span className={`text-4xl font-black ${th.color}`}>{eau.th_avg.toFixed(1)}</span>
                                 <span className="text-slate-400 text-sm">°f (degrés français)</span>
@@ -2831,7 +2594,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                                   contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #334155", borderRadius: 8, fontSize: 12, color: "#e2e8f0" }}
                                   labelStyle={{ color: "#94a3b8" }}
                                   itemStyle={{ color: "#e2e8f0" }}
-                                  formatter={(v: number) => [`${v.toFixed(decimals)} ${sel.unit}`, sel.label]}
+                                  formatter={(v: any) => [`${v.toFixed(decimals)} ${sel.unit}`, sel.label]}
                                 />
                                 {/* ligne pointillée dans les trous */}
                                 <Line type="monotone" dataKey={eauParam} stroke={sel.color} strokeWidth={1.5}
@@ -3045,14 +2808,14 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                   <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center">
                     <Building2 size={32} className="text-slate-600 mx-auto mb-3" />
                     <p className="text-slate-400 font-medium mb-1">Pas de données immobilières disponibles</p>
-                    <p className="text-slate-500 text-sm">Cette commune n'a pas de transactions DVF enregistrées dans la base.</p>
+                    <p className="text-slate-500 text-sm">Cette commune n&apos;a pas de transactions DVF enregistrées dans la base.</p>
                   </div>
                 )}
                 {/* ── Évolution maisons/appartements (toutes années dispo) ── */}
                 {loadingDvfEvo && !dvfEvo && (
                   <div className="flex items-center gap-2 text-slate-400 py-4 justify-center">
                     <Loader2 size={18} className="animate-spin" />
-                    <span className="text-sm">Chargement de l'évolution DVF+…</span>
+                    <span className="text-sm">Chargement de l&apos;évolution DVF+…</span>
                   </div>
                 )}
                 {dvfEvo && (() => {
@@ -3093,7 +2856,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                             contentStyle={{ backgroundColor: "#1e293b", border: "1px solid #334155", borderRadius: 8, fontSize: 12, color: "#e2e8f0" }}
                             labelStyle={{ color: "#e2e8f0", fontWeight: 600 }}
                             itemStyle={{ color: "#e2e8f0" }}
-                            formatter={(v: number, name: string) => [
+                            formatter={(v: any, name: any) => [
                               `${new Intl.NumberFormat("fr-FR").format(v)} €/m²`,
                               name === "maisons" ? "Maisons" : "Appartements",
                             ]}
@@ -3260,6 +3023,10 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                                       <strong>${prixM2Str}</strong><br/>
                                       <span style="color:#555">${prixStr}</span> · <span style="color:#555">${surfaceStr}</span>
                                     </div>`;
+                                    // Accès au ref dans le gestionnaire de clic, pas pendant
+                                    // le rendu : la règle ne peut pas le distinguer ici car la
+                                    // fonction est créée dans un .map() (donc pas de useCallback).
+                                    // eslint-disable-next-line react-hooks/refs
                                     dvfMapRef.current?.isolateId(feat.properties.id, popup);
                                     setDvfPointsVisible(false);
                                     document.getElementById("dvf-map-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -3416,7 +3183,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
 
                       {/* TH + TEOM */}
                       <div>
-                        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Taxe d'habitation (rés. secondaires) & TEOM</p>
+                        <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Taxe d&apos;habitation (rés. secondaires) & TEOM</p>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                           {[
                             { label: "TH — commune", value: fiscalite.th.taux_commune, sub: `Majoration RS : +${fiscalite.th.majoration_rs ?? 0}%` },
@@ -3578,7 +3345,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                       {/* Pyramide des âges */}
                       {demo?.tranches_age && Object.values(demo.tranches_age).some((v: any) => v != null) && (
                         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-                          <h2 className="text-sm font-bold text-white mb-1">Répartition par tranche d'âge</h2>
+                          <h2 className="text-sm font-bold text-white mb-1">Répartition par tranche d&apos;âge</h2>
                           <p className="text-xs text-slate-500 mb-4">Source : INSEE Recensement de la Population {demo.annee}</p>
                           <div className="space-y-2.5">
                             {(Object.entries({
@@ -3639,7 +3406,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                       {rev?.secret_statistique && (
                         <div className="flex items-center gap-2 bg-amber-900/20 border border-amber-800 rounded-xl p-4 text-xs text-amber-300">
                           <AlertCircle size={14} />
-                          Secret statistique — données de revenus non publiées pour les communes de moins de 1 000 habitants (protection de l'anonymat).
+                          Secret statistique — données de revenus non publiées pour les communes de moins de 1 000 habitants (protection de l&apos;anonymat).
                         </div>
                       )}
                       {!rev && !loadingInseeDemo && (
@@ -3738,7 +3505,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                             )}
                             {pop.navettes.indice_autonomie != null && (
                               <div className="bg-slate-800 border border-slate-700 rounded-xl p-3">
-                                <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">Indice d'autonomie</p>
+                                <p className="text-xs text-slate-400 uppercase tracking-wide mb-1">Indice d&apos;autonomie</p>
                                 <p className="text-xl font-bold text-white">{pop.navettes.indice_autonomie.toFixed(0)}</p>
                                 <p className="text-xs text-slate-500 mt-0.5">emplois / 100 actifs résidents</p>
                               </div>
@@ -3893,7 +3660,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                     <div className="space-y-5">
                       {/* Radar profil */}
                       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                        <h3 className="text-sm font-semibold text-white mb-0.5">Profil d'équipement</h3>
+                        <h3 className="text-sm font-semibold text-white mb-0.5">Profil d&apos;équipement</h3>
                         <p className="text-xs text-slate-500 mb-4">Densité par catégorie — équipements pour 10 000 habitants</p>
                         <div className="flex gap-2 items-center">
                           <div className="flex-1 min-w-0">
@@ -3971,7 +3738,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
 
                 {inseeServicesData?.tourisme?.cap_totale_lits != null && (
                   <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                    <h3 className="text-sm font-semibold text-white mb-4">🏖️ Capacité d'hébergement touristique</h3>
+                    <h3 className="text-sm font-semibold text-white mb-4">🏖️ Capacité d&apos;hébergement touristique</h3>
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                       <StatCard label="Capacité totale" value={formatNumber(inseeServicesData.tourisme.cap_totale_lits)} unit="lits" size="sm" />
                       {inseeServicesData.tourisme.nb_hotels != null && <StatCard label="Hôtels" value={String(inseeServicesData.tourisme.nb_hotels)} size="sm" />}
@@ -4073,7 +3840,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                         {hist.length >= 2 && (
                           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
                             <h3 className="text-sm font-semibold text-white mb-0.5">Évolution du marché du travail</h3>
-                            <p className="text-xs text-slate-500 mb-4">Taux de chômage et d'activité — 15–64 ans</p>
+                            <p className="text-xs text-slate-500 mb-4">Taux de chômage et d&apos;activité — 15–64 ans</p>
                             <ResponsiveContainer width="100%" height={170}>
                               <LineChart data={hist} margin={{ left: -10, right: 8 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
@@ -4125,7 +3892,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
 
                         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
                           <h3 className="text-sm font-semibold text-white mb-0.5">Activité par genre</h3>
-                          <p className="text-xs text-slate-500 mb-4">Taux d'activité hommes / femmes · {emp.annee}</p>
+                          <p className="text-xs text-slate-500 mb-4">Taux d&apos;activité hommes / femmes · {emp.annee}</p>
                           <ResponsiveContainer width="100%" height={100}>
                             <BarChart data={genreData} margin={{ left: 8, right: 8 }}>
                               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
@@ -4197,7 +3964,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                                 <div key={d.name}>
                                   <div className="flex items-center justify-between mb-0.5">
                                     <div className="flex items-center gap-1.5">
-                                      <div className="w-2 h-2 rounded-sm" style={{ background: d.fill }} />
+                                      <div className="w-2 h-2 rounded-xs" style={{ background: d.fill }} />
                                       <span className="text-xs text-slate-300">{d.name}</span>
                                     </div>
                                     <span className="text-xs font-mono text-slate-400">{d.pct?.toFixed(1)}%</span>
@@ -4215,7 +3982,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                       {/* Type d'emploi */}
                       {empType.pct_salaries != null && (
                         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                          <h3 className="text-sm font-semibold text-white mb-4">Type d'emploi · {emp.annee}</h3>
+                          <h3 className="text-sm font-semibold text-white mb-4">Type d&apos;emploi · {emp.annee}</h3>
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                             {empType.pct_salaries != null && (
                               <div className="text-center">
@@ -4241,8 +4008,8 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                             <div className="bg-violet-500 transition-all" style={{ width: `${empType.pct_non_salaries ?? 0}%` }} />
                           </div>
                           <div className="flex gap-4 mt-2">
-                            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-blue-500" /><span className="text-xs text-slate-500">Salariés</span></div>
-                            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-violet-500" /><span className="text-xs text-slate-500">Non-salariés</span></div>
+                            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-xs bg-blue-500" /><span className="text-xs text-slate-500">Salariés</span></div>
+                            <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-xs bg-violet-500" /><span className="text-xs text-slate-500">Non-salariés</span></div>
                           </div>
                         </div>
                       )}
@@ -4280,7 +4047,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                     <>
                       <div className="flex items-center gap-3 mt-2">
                         <div className="flex-1 border-t border-slate-800" />
-                        <span className="text-xs text-slate-500 shrink-0">Tissu d'entreprises — SIRENE</span>
+                        <span className="text-xs text-slate-500 shrink-0">Tissu d&apos;entreprises — SIRENE</span>
                         <div className="flex-1 border-t border-slate-800" />
                         {inseeEconData.etablissements.annee_demandee != null && inseeEconData.etablissements.annee !== inseeEconData.etablissements.annee_demandee && (
                           <span className="flex items-center gap-1 text-xs text-amber-400 shrink-0">
@@ -4316,7 +4083,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                           <div className="flex-1 min-w-0 space-y-1.5">
                             {sorted.slice(0, 12).map((s, i) => (
                               <div key={s.section} className="flex items-center gap-1.5">
-                                <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                                <div className="w-2.5 h-2.5 rounded-xs shrink-0" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
                                 <span className="text-xs text-slate-400 flex-1 truncate">{s.libelle}</span>
                                 <span className="text-xs font-mono text-slate-300 shrink-0">{formatNumber(s.nb_actifs)}</span>
                                 {(s.creations_an ?? 0) > 0 && <span className="text-xs text-emerald-500 shrink-0 w-10 text-right">+{s.creations_an}</span>}
@@ -4336,7 +4103,7 @@ export function CommuneDetailClient({ codeInsee }: CommuneDetailClientProps) {
                           <div className="grid grid-cols-2 gap-y-2 gap-x-3">
                             {sizeBands.map(({ nb, fill, label }) => (
                               <div key={label} className="flex items-center gap-2">
-                                <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: fill }} />
+                                <div className="w-2.5 h-2.5 rounded-xs shrink-0" style={{ background: fill }} />
                                 <span className="text-xs text-slate-400 flex-1">{label}</span>
                                 <span className="text-xs font-mono text-white">{formatNumber(nb)}</span>
                               </div>

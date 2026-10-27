@@ -330,7 +330,7 @@ function HeroSection() {
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-400">absurdes mais vrais</span>
         </h1>
         <p className="text-slate-400 text-sm mb-8 max-w-lg">
-          Tout ce que vous n'aviez pas pensé à chercher — données publiques, mauvaise foi contrôlée, comparaisons improbables.
+          Tout ce que vous n&apos;aviez pas pensé à chercher — données publiques, mauvaise foi contrôlée, comparaisons improbables.
         </p>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
@@ -542,6 +542,8 @@ function QuizSection() {
     setShuffled({ opts, correct: opts.indexOf(correctLabel) });
   }
 
+  // Tirage aléatoire au montage : doit rester côté client pour éviter un écart d'hydratation.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { initQuiz(0); }, []);
 
   if (!shuffled) return null;
@@ -794,6 +796,8 @@ function BattleRapideSection() {
 
     const ts: ReturnType<typeof setTimeout>[] = [];
 
+    // Séquence d'animation pilotée par des timers : l'enchaînement de rendus est voulu.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setAnnounce(`ROUND ${round}`);
     ts.push(setTimeout(() => setAnnounce(null), 950));
 
@@ -1032,7 +1036,7 @@ function BattleRapideSection() {
                     }
                   </p>
                   <p className="text-slate-600 text-xs mb-6">
-                    {(matchWinner === "a" ? cityB : cityA).nom} s'incline.
+                    {(matchWinner === "a" ? cityB : cityA).nom} s&apos;incline.
                   </p>
                 </>
               ) : (
